@@ -79,3 +79,8 @@ coverage.xml
 # Docker
 # =========================
 *.pid
+.terraform/
+.terraform.*
+terraform.tfstate
+terraform.tfstate.backup
+.terragrunt-cache/
