@@ -21,9 +21,30 @@ module "vpc_route_table" {
 }
 
 module "vpc_security_group" {
-  source = "./modules/vpc_security_group"
+  source = "./modules/iam_security_group"
   name   = "ecs-security-group"
   vpc_id = module.vpc.id
+  from_port = 8000
+  to_port = 8000
+}
+
+module "rds_security_group" {
+  source = "./modules/iam_security_group"
+  name   = "rds-security-group"
+  vpc_id = module.vpc.id
+  from_port = 5432
+  to_port = 5432
+  allowed_security_group_ids = [module.vpc_security_group.security_group_id]
+}
+
+module "rds_database" {
+  source = "./modules/rds_database"
+  name = var.db_name
+  db_user = var.db_user
+  db_password = var.db_password
+  db_instance_class = "db.t3.micro"
+  db_subnet_group_name = module.vpc_subnets.subnet_group_name
+  security_group_id = module.rds_security_group.security_group_id
 }
 
 module "ecs_cluster" {
@@ -37,8 +58,61 @@ module "iam_role" {
 }
 
 module "ecs_task_definition" {
+  name = "ecs-task-definition-app"
   source = "./modules/ecs_task"
   iam_role_arn = module.iam_role.arn
+  environment_variables = [
+    {
+      name  = "DB_HOST"
+      value = module.rds_database.host
+    },
+    {
+      name  = "DB_NAME"
+      value = var.db_name
+    },
+    {
+      name  = "DB_USER"
+      value = var.db_user
+    },
+    {
+      name  = "DB_PASSWORD"
+      value = var.db_password
+    },
+    {
+      name  = "DB_PORT"
+      value = module.rds_database.port
+    }
+  ]
+  container_command = []
+}
+
+module "ecs_task_definition_migrate" {
+  name = "ecs-task-definition-migrate"
+  source = "./modules/ecs_task"
+  iam_role_arn = module.iam_role.arn
+  environment_variables = [
+    {
+      name  = "DB_HOST"
+      value = module.rds_database.host
+    },
+    {
+      name  = "DB_NAME"
+      value = var.db_name
+    },
+    {
+      name  = "DB_USER"
+      value = var.db_user
+    },
+    {
+      name  = "DB_PASSWORD"
+      value = var.db_password
+    },
+    {
+      name  = "DB_PORT"
+      value = module.rds_database.port
+    }
+  ]
+  container_command = ["python", "manage.py", "migrate", "--noinput"]
 }
 
 module "ecs_service" {

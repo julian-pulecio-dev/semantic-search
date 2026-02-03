@@ -84,3 +84,5 @@ coverage.xml
 terraform.tfstate
 terraform.tfstate.backup
 .terragrunt-cache/
+terraform.tfvars
+*.tfvars.json

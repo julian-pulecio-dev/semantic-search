@@ -8,3 +8,12 @@ resource "aws_subnet" "public" {
   cidr_block        = cidrsubnet(var.vpc_cidr_block, 8, count.index)
   availability_zone = data.aws_availability_zones.available.names[count.index]
 }
+
+resource "aws_db_subnet_group" "subnet_group" {
+  name       = "rds-subnet-group"
+  subnet_ids = aws_subnet.public[*].id
+
+  tags = {
+    Name = "RDS subnet group"
+  }
+}
