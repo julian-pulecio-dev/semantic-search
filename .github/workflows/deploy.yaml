@@ -43,12 +43,12 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        working-directory: infra
+        working-directory: terraform
         run: terraform init -backend-config=backend-prod.hcl
 
       - name: Read Terraform outputs
         id: tf
-        working-directory: infra
+        working-directory: terraform
         run: |
             echo "CLUSTER=$(terraform output -raw ecs_cluster_name || exit 1)" >> $GITHUB_OUTPUT
             echo "SERVICE=$(terraform output -raw ecs_service_name || exit 1)" >> $GITHUB_OUTPUT
