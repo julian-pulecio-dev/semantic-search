@@ -10,7 +10,7 @@ output "migration_task_definition" {
   value = module.ecs_task_definition_migrate.arn
 }
 
-output "subnet_ids" {
+output "public_subnets" {
   value = module.vpc_subnets.subnet_ids
 }
 

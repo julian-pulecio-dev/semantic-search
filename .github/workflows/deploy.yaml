@@ -53,7 +53,7 @@ jobs:
             echo "CLUSTER=$(terraform output -raw ecs_cluster_name || exit 1)" >> $GITHUB_OUTPUT
             echo "SERVICE=$(terraform output -raw ecs_service_name || exit 1)" >> $GITHUB_OUTPUT
             echo "MIGRATION_TASK=$(terraform output -raw migration_task_definition || exit 1)" >> $GITHUB_OUTPUT
-            echo "SUBNETS=$(terraform output -json private_subnets || exit 1)" >> $GITHUB_OUTPUT
+            echo "SUBNETS=$(terraform output -json public_subnets || exit 1)" >> $GITHUB_OUTPUT
             echo "SG=$(terraform output -raw ecs_security_group || exit 1)" >> $GITHUB_OUTPUT
 
 
