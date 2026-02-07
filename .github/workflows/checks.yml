@@ -16,6 +16,13 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Create CI env file
+        run: |
+          cat <<EOF > .env.ci
+          DEBUG=False
+          SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}
+          DATABASE_URL=sqlite:///db.sqlite3
+          EOF
       - name: Checkout
         uses: actions/checkout@v4
       - name: Test
