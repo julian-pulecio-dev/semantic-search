@@ -86,3 +86,5 @@ terraform.tfstate.backup
 .terragrunt-cache/
 terraform.tfvars
 *.tfvars.json
+docker-compose.override.yml
+docker-compose.override.*.yml
