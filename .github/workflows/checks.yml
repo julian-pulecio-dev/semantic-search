@@ -26,6 +26,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Test
-        run: docker compose run --rm semantic-search sh -c "python manage.py test --settings=app.settings_test"
+        run: docker compose run --rm semantic-search sh -c "python manage.py test --settings=app.settings.test"
       - name: Lint
         run: docker compose run --rm semantic-search sh -c "flake8"

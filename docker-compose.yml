@@ -7,8 +7,6 @@ services:
         - DEV=true
     ports:
       - "8000:8000"
-    environment:
-      - DJANGO_SETTINGS_MODULE=app.settings
     volumes:
       - ./app:/app
     depends_on:
