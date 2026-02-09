@@ -26,6 +26,8 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
     TokenVerifyView,
 )
+from user import urls as user_urls
+from django.urls import include
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -47,4 +49,5 @@ urlpatterns = [
         "api/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"
     ),
     path("api/token/verify/", TokenVerifyView.as_view(), name="token_verify"),
+    path("api/user/", include(user_urls)),
 ]

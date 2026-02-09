@@ -1,3 +1,4 @@
+import uuid
 from django.contrib.auth.models import (
     AbstractBaseUser,
     BaseUserManager,
@@ -12,6 +13,7 @@ class UserManager(BaseUserManager):
             raise ValueError("Email is required")
         if not password:
             raise ValueError("Password is required")
+
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -31,9 +33,17 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
     email = models.EmailField(unique=True)
+    name = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     objects = UserManager()
 
