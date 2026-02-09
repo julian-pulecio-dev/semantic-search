@@ -7,11 +7,14 @@ CREATE_USER_URL = reverse("user:create")
 ME_USER_URL = reverse("user:me")
 LIST_USERS_URL = reverse("user:list")
 
+
 def create_user(**params):
     return get_user_model().objects.create_user(**params)
 
+
 def create_superuser(**params):
     return get_user_model().objects.create_superuser(**params)
+
 
 class UnAuthenticatedUserApiTests(TestCase):
     def setUp(self):
@@ -49,9 +52,12 @@ class UnAuthenticatedUserApiTests(TestCase):
         }
         res = self.client.post(CREATE_USER_URL, payload)
         self.assertEqual(res.status_code, 400)
-        user_exists = get_user_model().objects.filter(email=payload["email"]).exists()
+        user_exists = (
+            get_user_model().objects.filter(email=payload["email"]).exists()
+        )
         self.assertFalse(user_exists)
         self.assertIn("password", res.data)
+
 
 class AuthenticatedUserApiTests(TestCase):
     def setUp(self):
@@ -77,7 +83,7 @@ class AuthenticatedUserApiTests(TestCase):
         res = self.client.get(ME_USER_URL)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["email"], self.user.email)
-    
+
     def test_retrieve_user_unauthenticated(self):
         self.client.force_authenticate(user=None)
         res = self.client.get(ME_USER_URL)
@@ -87,17 +93,17 @@ class AuthenticatedUserApiTests(TestCase):
         self.client.force_authenticate(user=self.superuser)
         res = self.client.get(LIST_USERS_URL)
         self.assertEqual(res.status_code, 200)
-    
+
     def test_list_users_unauthenticated(self):
         self.client.force_authenticate(user=None)
         res = self.client.get(LIST_USERS_URL)
         self.assertEqual(res.status_code, 401)
-    
+
     def test_list_users_unauthorized(self):
         self.client.force_authenticate(user=self.user)
         res = self.client.get(LIST_USERS_URL)
         self.assertEqual(res.status_code, 403)
-    
+
     def test_update_user_success(self):
         payload = {
             "name": "Updated Name",
@@ -106,7 +112,7 @@ class AuthenticatedUserApiTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.user.refresh_from_db()
         self.assertEqual(self.user.name, payload["name"])
-    
+
     def test_update_user_unauthenticated(self):
         self.client.force_authenticate(user=None)
         payload = {
@@ -114,13 +120,13 @@ class AuthenticatedUserApiTests(TestCase):
         }
         res = self.client.patch(ME_USER_URL, payload)
         self.assertEqual(res.status_code, 401)
-    
+
     def test_delete_user_success(self):
         res = self.client.delete(ME_USER_URL)
         self.assertEqual(res.status_code, 204)
         user_exists = get_user_model().objects.filter(id=self.user.id).exists()
         self.assertFalse(user_exists)
-    
+
     def test_delete_user_unauthenticated(self):
         self.client.force_authenticate(user=None)
         res = self.client.delete(ME_USER_URL)
