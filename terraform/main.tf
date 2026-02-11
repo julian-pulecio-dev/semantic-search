@@ -1,3 +1,8 @@
+module "s3_bucket" {
+  source = "./modules/s3_bucket"
+  name_prefix = "semantic-search-bucket"
+}
+
 module "vpc" {
   source = "./modules/vpc"
 }
@@ -81,6 +86,10 @@ module "ecs_task_definition" {
     {
       name  = "DB_PORT"
       value = module.rds_database.port
+    },
+    {
+      name  = "S3_BUCKET_NAME"
+      value = module.s3_bucket.name
     }
   ]
   container_command = []
@@ -110,6 +119,10 @@ module "ecs_task_definition_migrate" {
     {
       name  = "DB_PORT"
       value = module.rds_database.port
+    },
+    {
+      name  = "S3_BUCKET_NAME"
+      value = module.s3_bucket.name
     }
   ]
   container_command = ["python", "manage.py", "migrate", "--noinput"]

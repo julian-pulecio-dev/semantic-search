@@ -17,3 +17,7 @@ output "public_subnets" {
 output "ecs_security_group" {
   value = module.vpc_security_group.security_group_id
 }
+
+output "s3_bucket_name" {
+  value = module.s3_bucket.name
+}
