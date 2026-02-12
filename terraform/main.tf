@@ -60,6 +60,7 @@ module "ecs_cluster" {
 module "iam_role" {
   source = "./modules/iam_role"
   name = "ecsTaskExecutionRole-dockerhub"
+  s3_bucket_name = module.s3_bucket.name
 }
 
 module "ecs_task_definition" {
