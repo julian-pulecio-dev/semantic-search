@@ -1,4 +1,3 @@
-from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from .services.storage import upload_file_to_s3
 from core.models import Document

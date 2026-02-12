@@ -20,9 +20,9 @@ class DocumentApiTests(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
-    @patch("document.services.storage.upload_file_to_s3")
-    def test_create_document_success(self, mock_boto_client):
-        mock_s3 = mock_boto_client.return_value
+    @patch("document.serializers.upload_file_to_s3")
+    def test_create_document_success(self, mock_upload):
+        mock_upload.return_value = "https://fake-url.com/file.txt"
 
         file = SimpleUploadedFile(
             "test.txt", b"hello world", content_type="text/plain"
@@ -35,3 +35,9 @@ class DocumentApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertIn("url", response.data)
         self.assertEqual(self.user.documents.count(), 1)
+        self.assertEqual(
+            self.user.documents.first().url,
+            "https://fake-url.com/file.txt",
+        )
+
+        mock_upload.assert_called_once()
