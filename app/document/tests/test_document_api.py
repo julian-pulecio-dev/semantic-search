@@ -20,7 +20,7 @@ class DocumentApiTests(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
-    @patch("document.serializers.upload_file_to_s3")
+    @patch("document.views.upload_file_to_s3")
     def test_create_document_success(self, mock_upload):
         mock_upload.return_value = "https://fake-url.com/file.txt"
 
