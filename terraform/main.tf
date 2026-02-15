@@ -60,7 +60,6 @@ module "ecs_cluster" {
 module "iam_role" {
   source = "./modules/iam_role"
   name = "ecsTaskExecutionRole-dockerhub"
-  s3_bucket_name = module.s3_bucket.name
 }
 
 module "ecs_task_definition" {
@@ -94,6 +93,7 @@ module "ecs_task_definition" {
     }
   ]
   container_command = []
+  s3_bucket_name = module.s3_bucket.name
 }
 
 module "ecs_task_definition_migrate" {
@@ -127,6 +127,7 @@ module "ecs_task_definition_migrate" {
     }
   ]
   container_command = ["python", "manage.py", "migrate", "--noinput"]
+  s3_bucket_name = module.s3_bucket.name
 }
 
 module "ecs_service" {

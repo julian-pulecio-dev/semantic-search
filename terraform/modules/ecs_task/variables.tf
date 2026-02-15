@@ -16,3 +16,7 @@ variable "environment_variables" {
 variable "container_command" {
   type = list(string)
 }
+
+variable "s3_bucket_name" {
+  type = string
+}
