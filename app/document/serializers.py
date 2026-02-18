@@ -13,7 +13,7 @@ from core.models import Document
         }
     ]
 )
-class DocumentSerializer(serializers.Serializer):
+class CreateDocumentSerializer(serializers.Serializer):
     """Serializer for Document model"""
 
     file = serializers.FileField(write_only=True)
@@ -25,3 +25,16 @@ class DocumentSerializer(serializers.Serializer):
         model = Document
         fields = ("file", "url", "uploaded_at")
         read_only_fields = ("url", "uploaded_at")
+
+
+class DocumentSerializer(serializers.ModelSerializer):
+    file_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Document
+        fields = ["id", "url", "s3_key", "uploaded_at", "file_name"]
+        read_only_fields = fields
+
+    def get_file_name(self, obj):
+        # Extrae el nombre del archivo a partir de s3_key
+        return obj.s3_key.split("/")[-1]

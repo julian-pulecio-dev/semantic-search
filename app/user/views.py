@@ -24,4 +24,5 @@ class MeView(BaseUserView, generics.RetrieveUpdateDestroyAPIView):
 
 class ListUsersView(BaseUserView, generics.ListAPIView):
     permission_classes = [permissions.IsAdminUser]
+    authentication_classes = [JWTAuthentication]
     queryset = get_user_model().objects.all()
