@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from drf_spectacular.utils import extend_schema_serializer, extend_schema_field
 from drf_spectacular.types import OpenApiTypes
-from core.models import Document
+from document.models import Document
 
 
 @extend_schema_serializer(

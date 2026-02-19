@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "core",
     "user",
     "document",
+    "document_chunk",
 ]
 
 MIDDLEWARE = [
@@ -130,7 +131,7 @@ REST_FRAMEWORK = {
     ],
 }
 
-AUTH_USER_MODEL = "core.User"
+AUTH_USER_MODEL = "user.User"
 
 SPECTACULAR_SETTINGS = {
     "COMPONENT_SPLIT_REQUEST": True,

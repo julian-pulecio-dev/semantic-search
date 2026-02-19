@@ -1,6 +1,6 @@
 from rest_framework import permissions
 from .serializers import CreateDocumentSerializer, DocumentSerializer
-from core.models import Document
+from document.models import Document
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework.response import Response
 from document.services.storage import upload_file_to_s3, delete_file_from_s3
