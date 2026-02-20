@@ -1,0 +1,35 @@
+services:
+  semantic-search:
+    platform: linux/amd64
+    build:
+      context: .
+      args:
+        - DEV=true
+    environment:
+      DB_NAME: app
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: semantic-search-db
+      DB_PORT: 5432
+    volumes:
+      - ./app:/app
+    depends_on:
+      semantic-search-db:
+        condition: service_healthy
+
+  semantic-search-db:
+    image: pgvector/pgvector:pg15
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

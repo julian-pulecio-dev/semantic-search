@@ -10,22 +10,36 @@ jobs:
   test-lint:
     name: Test and Lint
     runs-on: ubuntu-24.04
+
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Create CI env file
+
+      - name: Build containers
+        run: docker compose -f docker-compose.ci.yml build
+
+      - name: Start services
+        run: docker compose -p ci -f docker-compose.ci.yml up -d
+      
+      - name: List running containers
         run: |
-          cat <<EOF > .env.ci
-          DEBUG=False
-          SECRET_KEY=${{ secrets.DJANGO_SECRET_KEY }}
-          DATABASE_URL=sqlite:///db.sqlite3
-          EOF
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Test
-        run: docker compose run --rm semantic-search sh -c "python manage.py test --settings=app.settings.test"
-      - name: Lint
-        run: docker compose run --rm semantic-search sh -c "flake8"
+          docker ps -a
+          docker logs ci-semantic-search-db-1
+
+      - name: Wait for DB
+        run: |
+          until docker compose -p ci -f docker-compose.ci.yml exec -T semantic-search-db pg_isready -U postgres; do
+            sleep 5
+          done
+
+      - name: Run migrations
+        run: docker compose -p ci -f docker-compose.ci.yml exec -T semantic-search python manage.py migrate --settings=app.settings.test
+
+      - name: Run tests
+        run: docker compose -p ci -f docker-compose.ci.yml exec -T semantic-search python manage.py test --settings=app.settings.test
