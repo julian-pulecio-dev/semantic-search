@@ -11,8 +11,7 @@ class DocumentChunkModelTest(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user(
-            email="test@example.com",
-            password="password123"
+            email="test@example.com", password="password123"
         )
 
         self.document = Document.objects.create(
@@ -71,6 +70,4 @@ class DocumentChunkModelTest(TestCase):
 
         self.document.delete()
 
-        self.assertFalse(
-            DocumentChunk.objects.filter(id=chunk.id).exists()
-        )
+        self.assertFalse(DocumentChunk.objects.filter(id=chunk.id).exists())

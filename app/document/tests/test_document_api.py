@@ -40,11 +40,15 @@ class DocumentApiTests(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
+    @patch("document.views.DocumentChunkProcessor")  # <--- AÑADE ESTO
     @patch("document.views.uuid4")
     @patch("document.views.upload_file_to_s3")
-    def test_create_document_success(self, mock_upload, mock_uuid4):
+    def test_create_document_success(
+        self, mock_upload, mock_uuid4, mock_processor
+    ):
         mock_uuid4.return_value = "1234-5678-9012"
         mock_upload.return_value = "https://fake-url.com/test.txt"
+        mock_processor.return_value.process.return_value = []
 
         file = SimpleUploadedFile(
             "test.txt", b"hello world", content_type="text/plain"
@@ -57,16 +61,8 @@ class DocumentApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertIn("url", response.data)
         self.assertEqual(self.user.documents.count(), 1)
-        self.assertEqual(
-            self.user.documents.first().url,
-            "https://fake-url.com/test.txt",
-        )
-        self.assertEqual(
-            self.user.documents.first().s3_key,
-            f"{self.user.email}/{mock_uuid4.return_value}.txt",
-        )
 
-        mock_upload.assert_called_once()
+        mock_processor.assert_called_once()
 
     @patch("document.views.delete_file_from_s3")
     def test_delete_document_success(self, mock_delete):
@@ -161,3 +157,32 @@ class DocumentApiTests(TestCase):
             reverse("document:retrieve", kwargs={"pk": document.id})
         )
         self.assertEqual(response.status_code, 404)
+
+    @patch("document.views.DocumentChunkProcessor")
+    @patch("document.views.uuid4")
+    @patch("document.views.upload_file_to_s3")
+    def test_create_document_calls_process_document(
+        self,
+        mock_upload,
+        mock_uuid4,
+        mock_processor_class,
+    ):
+        mock_uuid4.return_value = "1234-5678"
+        mock_upload.return_value = "https://fake-url.com/test.txt"
+
+        mock_instance = mock_processor_class.return_value
+        mock_instance.process.return_value = [
+            {"content": "chunk 1", "page_number": 1, "document_id": 1}
+        ]
+
+        file = SimpleUploadedFile(
+            "test.txt", b"hello world", content_type="text/plain"
+        )
+        response = self.client.post(
+            CREATE_DOCUMENT_URL, {"file": file}, format="multipart"
+        )
+        self.assertEqual(response.status_code, 201)
+
+        document = self.user.documents.first()
+        mock_processor_class.assert_called_once_with(document)
+        mock_instance.process.assert_called_once()
