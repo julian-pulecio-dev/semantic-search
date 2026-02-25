@@ -28,6 +28,7 @@ from rest_framework_simplejwt.views import (
 )
 from user import urls as user_urls
 from document import urls as document_urls
+from document_chunk import urls as document_chunk_urls
 from django.urls import include
 
 urlpatterns = [
@@ -52,4 +53,5 @@ urlpatterns = [
     path("api/token/verify/", TokenVerifyView.as_view(), name="token_verify"),
     path("api/user/", include(user_urls)),
     path("api/document/", include(document_urls)),
+    path("api/chunk/", include(document_chunk_urls)),
 ]

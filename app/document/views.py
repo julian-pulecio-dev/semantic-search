@@ -3,18 +3,16 @@ from .serializers import CreateDocumentSerializer, DocumentSerializer
 from document.models import Document
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework.response import Response
-from document.services.storage import upload_file_to_s3, delete_file_from_s3
-from document_chunk.services.document_chunk_processor import (
-    DocumentChunkProcessor,
-)
+from document.services.ingestion import ingest_document
+from document.services.storage import delete_file_from_s3
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import generics
 from rest_framework import serializers
-from uuid import uuid4
+from rest_framework.views import APIView
 
 
-class CreateDocumentView(generics.CreateAPIView):
+class CreateDocumentView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
@@ -29,7 +27,11 @@ class CreateDocumentView(generics.CreateAPIView):
         ),
         responses={
             201: inline_serializer(
-                name="Success", fields={"msg": serializers.CharField()}
+                name="Success",
+                fields={
+                    "url": serializers.CharField(),
+                    "chunks": serializers.IntegerField(),
+                },
             )
         },
     )
@@ -38,15 +40,11 @@ class CreateDocumentView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
 
         file = serializer.validated_data["file"]
-        file_extension = file.name.split(".")[-1]
+        document, document_chunks = ingest_document(request.user, file)
 
-        uuid4_str = str(uuid4())
-        key = f"{request.user.email}/{uuid4_str}.{file_extension}"
-        url = upload_file_to_s3(file, key=key)
-        document = request.user.documents.create(url=url, s3_key=key)
-        chunks = DocumentChunkProcessor(document).process()
-
-        return Response({"url": document.url}, status=201)
+        return Response(
+            {"url": document.url, "chunks": len(document_chunks)}, status=201
+        )
 
 
 class ListAllDocumentsView(generics.ListAPIView):
