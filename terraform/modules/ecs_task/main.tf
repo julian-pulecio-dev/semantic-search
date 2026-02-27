@@ -42,9 +42,32 @@ resource "aws_iam_policy" "ecs_s3_write" {
   })
 }
 
+resource "aws_iam_policy" "ecs_bedrock_nova" {
+  name = "${var.name}-bedrock-nova"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
+        ]
+        Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "ecs_s3_write_attach" {
   role       = aws_iam_role.ecs_task.name
   policy_arn = aws_iam_policy.ecs_s3_write.arn
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_bedrock_nova_attach" {
+  role       = aws_iam_role.ecs_task.name
+  policy_arn = aws_iam_policy.ecs_bedrock_nova.arn
 }
 
 resource "aws_ecs_task_definition" "app" {

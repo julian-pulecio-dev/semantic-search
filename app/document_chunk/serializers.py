@@ -11,5 +11,6 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
             "content",
             "chunk_index",
             "created_at",
+            "embedding",
         ]
         read_only_fields = fields

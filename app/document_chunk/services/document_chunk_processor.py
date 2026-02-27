@@ -3,8 +3,15 @@ import os
 import pdfplumber
 from io import BytesIO
 from document.models import Document
+from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+class Chunk:
+    def __init__(self, content: str, page_number: int, document_id: int):
+        self.content = content
+        self.page_number = page_number
+        self.document_id = document_id
+        self.embedding = None
 
 class DocumentChunkProcessor:
     LINE_TOLERANCE = 3
@@ -12,13 +19,17 @@ class DocumentChunkProcessor:
     def __init__(self, document: Document):
         self.document = document
         self.s3_client = boto3.client("s3")
+        self.embedding_processor = EmbeddingsProcessor(document)
 
     def process(self):
         file_stream = self._get_s3_file(
             os.environ["S3_BUCKET_NAME"], self.document.s3_key
         )
         pages_text = self._pdf_to_text(file_stream)
-        return self._text_to_chunks(pages_text)
+        chunks = self._text_to_chunks(pages_text)
+        for chunk in chunks:
+            chunk.embedding = self.embedding_processor.chunk_text_to_embeddings(chunk.content)
+        return chunks
 
     def _get_s3_file(self, bucket_name: str, file_key: str) -> BytesIO:
         response = self.s3_client.get_object(Bucket=bucket_name, Key=file_key)
@@ -131,12 +142,11 @@ class DocumentChunkProcessor:
             page_chunks = splitter.split_text(page["text"])
 
             for chunk in page_chunks:
-                chunks.append(
-                    {
-                        "content": chunk,
-                        "page_number": page["page_number"],
-                        "document_id": self.document.id,
-                    }
+                chunk_obj = Chunk(
+                    content=chunk,
+                    page_number=page["page_number"],
+                    document_id=self.document.id,
                 )
+                chunks.append(chunk_obj)
 
         return chunks

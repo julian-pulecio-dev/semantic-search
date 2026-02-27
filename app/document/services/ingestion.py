@@ -40,8 +40,8 @@ def create_document_and_chunks(document) -> list[DocumentChunk]:
         [
             DocumentChunk(
                 document=document,
-                content=chunk["content"],
-                embedding=[0.1] * 1536,
+                content=chunk.content,
+                embedding=chunk.embedding,
                 chunk_index=chunk_idx,
             )
             for chunk_idx, chunk in enumerate(chunk_data)
