@@ -10,8 +10,7 @@ class EmbeddingsProcessor:
         self.model_id = "amazon.titan-embed-text-v2:0"
 
         self.bedrock_client = boto3.client(
-            service_name="bedrock-runtime",
-            region_name="us-east-1"
+            service_name="bedrock-runtime", region_name="us-east-1"
         )
 
     def chunk_text_to_embeddings(self, chunk_text: str) -> list[float]:
@@ -24,9 +23,7 @@ class EmbeddingsProcessor:
                     modelId=self.model_id,
                     contentType="application/json",
                     accept="application/json",
-                    body=json.dumps({
-                        "inputText": chunk_text
-                    })
+                    body=json.dumps({"inputText": chunk_text}),
                 )
 
                 result = json.loads(response["body"].read())

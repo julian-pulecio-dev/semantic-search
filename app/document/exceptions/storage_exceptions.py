@@ -4,6 +4,7 @@ from botocore.exceptions import ClientError, BotoCoreError
 
 class DocumentStorageError(Exception):
     """Base domain exception for storage errors."""
+
     pass
 
 
@@ -29,6 +30,7 @@ class S3RateLimitError(DocumentStorageError):
 
 class S3ServiceError(DocumentStorageError):
     pass
+
 
 NOT_FOUND_ERRORS = {
     "NoSuchKey",
@@ -69,9 +71,7 @@ ERROR_GROUPS = {
 }
 
 ERROR_CODE_MAP = {
-    code: exc
-    for exc, codes in ERROR_GROUPS.items()
-    for code in codes
+    code: exc for exc, codes in ERROR_GROUPS.items() for code in codes
 }
 
 
@@ -83,7 +83,7 @@ def map_s3_exception(e: ClientError):
     Returns:
         DocumentStorageError: A mapped custom exception that provides more context about the S3 error.
     """
-    
+
     error = e.response.get("Error", {})
     error_code = error.get("Code")
     http_status = e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
@@ -103,14 +103,12 @@ def map_s3_exception(e: ClientError):
     if http_status in (500, 502, 503, 504):
         return S3ServiceError("S3 internal service error")
 
-    return S3ServiceError(
-        f"Unhandled S3 error: {error_code or http_status}"
-    )
+    return S3ServiceError(f"Unhandled S3 error: {error_code or http_status}")
 
 
 def handle_storage_errors(func):
     """Decorator to wrap storage operations and handle S3 exceptions gracefully."""
-    
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -118,10 +116,8 @@ def handle_storage_errors(func):
 
         except ClientError as e:
             raise map_s3_exception(e) from e
-        
+
         except BotoCoreError as e:
-            raise S3ServiceError(
-                "Low-level boto3 error"
-            ) from e
+            raise S3ServiceError("Low-level boto3 error") from e
 
     return wrapper

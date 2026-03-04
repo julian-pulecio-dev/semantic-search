@@ -2,15 +2,19 @@ import uuid
 from django.db import models
 from user.models import User
 
+
 class DocumentStatus(models.TextChoices):
     PENDING = "PENDING", "PENDING"
     PROCESSING = "PROCESSING", "PROCESSING"
     READY = "READY", "READY"
     FAILED = "FAILED", "FAILED"
 
+
 class Document(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    s3_key = models.CharField(max_length=255, unique=True, null=True, blank=True, editable=False)
+    s3_key = models.CharField(
+        max_length=255, unique=True, null=True, blank=True, editable=False
+    )
     status = models.CharField(
         choices=DocumentStatus.choices,
         max_length=20,

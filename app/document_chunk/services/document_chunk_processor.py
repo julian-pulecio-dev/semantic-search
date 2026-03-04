@@ -6,12 +6,14 @@ from document.models import Document
 from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+
 class Chunk:
     def __init__(self, content: str, page_number: int, document_id: int):
         self.content = content
         self.page_number = page_number
         self.document_id = document_id
         self.embedding = None
+
 
 class DocumentChunkProcessor:
     LINE_TOLERANCE = 3
@@ -28,7 +30,11 @@ class DocumentChunkProcessor:
         pages_text = self._pdf_to_text(file_stream)
         chunks = self._text_to_chunks(pages_text)
         for chunk in chunks:
-            chunk.embedding = self.embedding_processor.chunk_text_to_embeddings(chunk.content)
+            chunk.embedding = (
+                self.embedding_processor.chunk_text_to_embeddings(
+                    chunk.content
+                )
+            )
         return chunks
 
     def _get_s3_file(self, bucket_name: str, file_key: str) -> BytesIO:

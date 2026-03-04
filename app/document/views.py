@@ -13,6 +13,7 @@ from rest_framework import status
 
 BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 
+
 class CreateDocumentView(APIView):
     parser_classes = []
     permission_classes = [permissions.IsAuthenticated]
@@ -26,20 +27,20 @@ class CreateDocumentView(APIView):
         s3_loader = S3FileLoader(bucket_name=BUCKET_NAME)
         key = f"{request.user.email}/{document.id}"
         pre_signed_url = s3_loader.generate_presigned_url_for_upload(
-            key=key,
-            user_email=str(request.user.email)
+            key=key, user_email=str(request.user.email)
         )
         document.s3_key = key
         document.save()
 
-        serializer = DocumentPresignedURLSerializer({
-            "document_id": document.id,
-            "url": pre_signed_url,
-            "status": document.status,
-        })
+        serializer = DocumentPresignedURLSerializer(
+            {
+                "document_id": document.id,
+                "url": pre_signed_url,
+                "status": document.status,
+            }
+        )
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
 
 
 class ListAllDocumentsView(generics.ListAPIView):
