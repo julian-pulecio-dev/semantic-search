@@ -5,7 +5,6 @@ from document.models import Document, DocumentStatus
 from document.services.storage import S3FileLoader
 from document.serializers import DocumentPresignedURLSerializer
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import generics
 from rest_framework.views import APIView

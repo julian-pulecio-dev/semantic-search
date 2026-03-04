@@ -1,4 +1,3 @@
-import io
 import boto3
 from document.exceptions.storage_exceptions import (
     S3FileNotFoundError,

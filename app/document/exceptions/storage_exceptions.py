@@ -77,11 +77,13 @@ ERROR_CODE_MAP = {
 
 def map_s3_exception(e: ClientError):
     """
-    Map a boto3 ClientError to a custom domain exception based on error code and HTTP status.
+    Map a boto3 ClientError to a custom domain exception
+    based on error code and HTTP status.
     Arguments:
         e (ClientError): The original exception raised by boto3.
     Returns:
-        DocumentStorageError: A mapped custom exception that provides more context about the S3 error.
+        DocumentStorageError: A mapped custom exception that provides
+                              more context about the S3 error.
     """
 
     error = e.response.get("Error", {})
