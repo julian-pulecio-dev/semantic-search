@@ -3,6 +3,18 @@ module "s3_bucket" {
   name_prefix = "semantic-search-bucket"
 }
 
+module "sqs_dead_letter_queue" {
+  source = "./modules/sqs_queue"
+  name = "semantic-search-bucket-dead-letter-queue"
+}
+
+module "sqs_queue" {
+  source = "./modules/sqs_queue"
+  name = "semantic-search-bucket-queue"
+  create_dlq = true
+  dlq_name = module.sqs_dead_letter_queue.name
+}
+
 module "vpc" {
   source = "./modules/vpc"
 }
