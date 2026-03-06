@@ -1,5 +1,5 @@
 import boto3
-from document.exceptions.storage_exceptions import (
+from core.exceptions.storage_exceptions import (
     S3FileNotFoundError,
     map_s3_exception,
     S3ServiceError,
@@ -9,12 +9,15 @@ from botocore.exceptions import ClientError
 from botocore.exceptions import BotoCoreError
 
 
-class S3FileLoader:
+class S3FileLoaderService:
     """Service class for handling S3 file operations with robust error handling."""
 
     def __init__(self, bucket_name):
         self.bucket_name = bucket_name
         self.s3_client = boto3.client("s3")
+
+    def build_document_key(self, user_id: int, document_id: int) -> str:
+        return f"documents/{user_id}/{document_id}"
 
     def file_exists(self, key: str) -> bool:
         """
@@ -64,14 +67,18 @@ class S3FileLoader:
 
     @handle_storage_errors
     def generate_presigned_url_for_upload(
-        self, key: str, expiration: int = 3600, user_email: str = None
+        self,
+        key: str,
+        user_id: str,
+        expiration: int = 3600,
     ) -> str:
         """
         Generate a presigned URL for uploading a file to S3.
         Arguments:
             key (str): The S3 key of the file for which to generate the URL.
+            user_id (str): The ID of the user uploading the file.
             expiration (int): Time in seconds for the presigned URL to remain valid.
-            user_email (str): The email of the user uploading the file.
+            user_id (str): The ID of the user uploading the file.
         Returns:
             str: The generated presigned URL.
         """
@@ -87,16 +94,16 @@ class S3FileLoader:
                 "Content-Type": "application/pdf",
                 "acl": "private",
                 "x-amz-meta-document-id": str(key),
-                "x-amz-meta-user-email": str(user_email),
+                "x-amz-meta-user-id": str(user_id),
                 "x-amz-server-side-encryption": "AES256",
             },
             Conditions=[
                 {"Content-Type": "application/pdf"},
                 {"acl": "private"},
                 {"x-amz-meta-document-id": str(key)},
-                {"x-amz-meta-user-email": str(user_email)},
+                {"x-amz-meta-user-id": str(user_id)},
                 {"x-amz-server-side-encryption": "AES256"},
-                ["starts-with", "$key", f"{user_email}/"],
+                ["starts-with", "$key", f"documents/{user_id}/"],
                 ["content-length-range", 1, max_size],
             ],
             ExpiresIn=expiration,

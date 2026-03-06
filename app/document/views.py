@@ -1,29 +1,12 @@
 import os
 from rest_framework import permissions
 from .serializers import DocumentSerializer
-from document.models import Document, DocumentStatus
-from document.services.storage import S3FileLoader
-from document.services.ingestion import create_document_request
-from document.serializers import DocumentPresignedURLSerializer
-
-from rest_framework.response import Response
+from document.models import Document
+from document.services.storage import S3FileLoaderService
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import generics
-from rest_framework.views import APIView
-from rest_framework import status
 
 BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
-
-
-class CreateDocumentView(APIView):
-    parser_classes = []
-    permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication]
-
-    def post(self, request):
-        response_data = create_document_request(request.user)
-        serializer = DocumentPresignedURLSerializer(response_data)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class ListAllDocumentsView(generics.ListAPIView):
@@ -63,6 +46,6 @@ class DeleteDocumentView(generics.DestroyAPIView):
         return self.request.user.documents.all()
 
     def perform_destroy(self, instance):
-        s3_loader = S3FileLoader(bucket_name=BUCKET_NAME)
+        s3_loader = S3FileLoaderService(bucket_name=BUCKET_NAME)
         s3_loader.delete_file(key=instance.s3_key)
         instance.delete()

@@ -29,6 +29,7 @@ from rest_framework_simplejwt.views import (
 from user import urls as user_urls
 from document import urls as document_urls
 from document_chunk import urls as document_chunk_urls
+from upload_session import urls as upload_session_urls
 from django.urls import include
 
 urlpatterns = [
@@ -54,4 +55,5 @@ urlpatterns = [
     path("api/user/", include(user_urls)),
     path("api/document/", include(document_urls)),
     path("api/chunk/", include(document_chunk_urls)),
+    path("api/upload_session/", include(upload_session_urls)),
 ]
