@@ -4,7 +4,7 @@ from document.services.storage import S3FileLoaderService
 from upload_session.services.document_upload_service import (
     DocumentUploadService,
 )
-from document.serializers import DocumentPresignedURLSerializer
+from upload_session.serializers import UploadSessionSerializer
 
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -25,5 +25,5 @@ class CreateUploadSessionView(APIView):
             user=request.user, storage=storage_service
         )
         response_data = document_service.create_upload_request()
-        serializer = DocumentPresignedURLSerializer(response_data)
+        serializer = UploadSessionSerializer(response_data)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
