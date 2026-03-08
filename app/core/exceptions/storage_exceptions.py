@@ -76,9 +76,9 @@ ERROR_CODE_MAP = {
 
 
 def map_s3_exception(e: ClientError):
-    """
-    Map a boto3 ClientError to a custom domain exception
-    based on error code and HTTP status.
+    """Map a boto3 ClientError to a custom domain exception based on error code
+    and HTTP status.
+
     Arguments:
         e (ClientError): The original exception raised by boto3.
     Returns:
@@ -109,7 +109,8 @@ def map_s3_exception(e: ClientError):
 
 
 def handle_storage_errors(func):
-    """Decorator to wrap storage operations and handle S3 exceptions gracefully."""
+    """Decorator to wrap storage operations and handle S3 exceptions
+    gracefully."""
 
     @wraps(func)
     def wrapper(*args, **kwargs):

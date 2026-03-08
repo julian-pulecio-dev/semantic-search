@@ -18,19 +18,15 @@ class TestS3FileLoaderService(unittest.TestCase):
             self.mock_s3 = self.service.s3_client
 
     def test_build_document_key(self):
-        """
-        Verify that the document key is built correctly
-        based on user ID and document ID.
-        """
+        """Verify that the document key is built correctly based on user ID and
+        document ID."""
 
         result = self.service.build_document_key(1, 100)
         self.assertEqual(result, "documents/1/100")
 
     def test_file_exists_success(self):
-        """
-        Verify that file_exists returns True when the
-        file is found in S3.
-        """
+        """Verify that file_exists returns True when the file is found in
+        S3."""
 
         self.mock_s3.head_object.return_value = {}
         exists = self.service.file_exists("test-key")
@@ -41,10 +37,8 @@ class TestS3FileLoaderService(unittest.TestCase):
 
     @patch("document.services.storage.map_s3_exception")
     def test_file_exists_not_found(self, mock_map):
-        """
-        Verify that file_exists returns False when the
-        file is not found in S3.
-        """
+        """Verify that file_exists returns False when the file is not found in
+        S3."""
 
         error_response = {"Error": {"Code": "404", "Message": "Not Found"}}
         self.mock_s3.head_object.side_effect = ClientError(
@@ -56,10 +50,8 @@ class TestS3FileLoaderService(unittest.TestCase):
         self.assertFalse(exists)
 
     def test_file_exists_botocore_error(self):
-        """
-        Verify that file_exists raises S3ServiceError when
-        a BotoCoreError occurs.
-        """
+        """Verify that file_exists raises S3ServiceError when a BotoCoreError
+        occurs."""
 
         self.mock_s3.head_object.side_effect = BotoCoreError()
         with self.assertRaises(S3ServiceError):
@@ -89,10 +81,8 @@ class TestS3FileLoaderService(unittest.TestCase):
         )
 
     def test_generate_presigned_url_success(self):
-        """
-        Verify that generate_presigned_url_for_upload returns
-        the expected presigned URL and fields.
-        """
+        """Verify that generate_presigned_url_for_upload returns the expected
+        presigned URL and fields."""
 
         expected_response = {"url": "https://s3.url", "fields": {}}
         self.mock_s3.generate_presigned_post.return_value = expected_response

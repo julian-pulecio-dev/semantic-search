@@ -10,7 +10,8 @@ from botocore.exceptions import BotoCoreError
 
 
 class S3FileLoaderService:
-    """Service class for handling S3 file operations with robust error handling."""
+    """Service class for handling S3 file operations with robust error
+    handling."""
 
     def __init__(self, bucket_name):
         self.bucket_name = bucket_name
@@ -20,8 +21,8 @@ class S3FileLoaderService:
         return f"documents/{user_id}/{document_id}"
 
     def file_exists(self, key: str) -> bool:
-        """
-        Check if a file exists in S3 by attempting to retrieve its metadata.
+        """Check if a file exists in S3 by attempting to retrieve its metadata.
+
         Arguments:
             key (str): The S3 key of the file to check.
         Returns:
@@ -41,8 +42,8 @@ class S3FileLoaderService:
 
     @handle_storage_errors
     def get_file(self, key: str) -> bytes:
-        """
-        Retrieve a file from S3 and return its content as bytes.
+        """Retrieve a file from S3 and return its content as bytes.
+
         Arguments:
             key (str): The S3 key of the file to retrieve.
         Returns:
@@ -54,8 +55,8 @@ class S3FileLoaderService:
 
     @handle_storage_errors
     def delete_file(self, key: str):
-        """
-        Delete a file from S3.
+        """Delete a file from S3.
+
         Arguments:
             key (str): The S3 key of the file to delete.
         Returns:
@@ -72,8 +73,8 @@ class S3FileLoaderService:
         user_id: str,
         expiration: int = 3600,
     ) -> str:
-        """
-        Generate a presigned URL for uploading a file to S3.
+        """Generate a presigned URL for uploading a file to S3.
+
         Arguments:
             key (str): The S3 key of the file for which to generate the URL.
             user_id (str): The ID of the user uploading the file.

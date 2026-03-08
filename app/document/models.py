@@ -1,6 +1,7 @@
 import uuid
 from django.db import models
 from user.models import User
+from document_type.models import DocumentType
 
 
 class Document(models.Model):
@@ -11,6 +12,12 @@ class Document(models.Model):
         FAILED = "FAILED", "FAILED"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    document_type = models.ForeignKey(
+        DocumentType,
+        on_delete=models.PROTECT,
+        null=True,
+        related_name="documents",
+    )
     s3_key = models.CharField(
         max_length=255, unique=True, null=True, blank=True, editable=False
     )
