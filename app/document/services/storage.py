@@ -17,8 +17,8 @@ class S3FileLoaderService:
         self.bucket_name = bucket_name
         self.s3_client = boto3.client("s3")
 
-    def build_document_key(self, user_id: int, document_id: int) -> str:
-        return f"documents/{user_id}/{document_id}"
+    def build_document_key(self, user_id: int, upload_session_id: int) -> str:
+        return f"documents/{user_id}/{upload_session_id}"
 
     def file_exists(self, key: str) -> bool:
         """Check if a file exists in S3 by attempting to retrieve its metadata.
@@ -71,42 +71,46 @@ class S3FileLoaderService:
         self,
         key: str,
         user_id: str,
+        upload_session_id: str,
+        document_id: str,
         expiration: int = 3600,
-    ) -> str:
-        """Generate a presigned URL for uploading a file to S3.
-
-        Arguments:
-            key (str): The S3 key of the file for which to generate the URL.
-            user_id (str): The ID of the user uploading the file.
-            expiration (int): Time in seconds for the presigned URL to remain valid.
-            user_id (str): The ID of the user uploading the file.
-        Returns:
-            str: The generated presigned URL.
+    ) -> dict:
+        """
+        Generate a presigned POST URL for uploading a file to S3
+        with enforced metadata for async processing.
         """
 
         max_size = 20 * 1024 * 1024  # 20 MB
         key = str(key)
 
+        metadata = {
+            "x-amz-meta-upload-session-id": str(upload_session_id),
+            "x-amz-meta-document-id": str(document_id),
+            "x-amz-meta-user-id": str(user_id),
+        }
+
+        fields = {
+            "key": key,
+            "Content-Type": "application/pdf",
+            "acl": "private",
+            "x-amz-server-side-encryption": "AES256",
+            **metadata,
+        }
+
+        conditions = [
+            {"acl": "private"},
+            {"Content-Type": "application/pdf"},
+            {"x-amz-server-side-encryption": "AES256"},
+            ["starts-with", "$key", f"documents/{user_id}/"],
+            ["content-length-range", 1, max_size],
+            *[{k: v} for k, v in metadata.items()],
+        ]
+
         response = self.s3_client.generate_presigned_post(
             Bucket=self.bucket_name,
             Key=key,
-            Fields={
-                "key": key,
-                "Content-Type": "application/pdf",
-                "acl": "private",
-                "x-amz-meta-document-id": str(key),
-                "x-amz-meta-user-id": str(user_id),
-                "x-amz-server-side-encryption": "AES256",
-            },
-            Conditions=[
-                {"Content-Type": "application/pdf"},
-                {"acl": "private"},
-                {"x-amz-meta-document-id": str(key)},
-                {"x-amz-meta-user-id": str(user_id)},
-                {"x-amz-server-side-encryption": "AES256"},
-                ["starts-with", "$key", f"documents/{user_id}/"],
-                ["content-length-range", 1, max_size],
-            ],
+            Fields=fields,
+            Conditions=conditions,
             ExpiresIn=expiration,
         )
 

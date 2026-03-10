@@ -24,7 +24,6 @@ class UploadSessionModelTest(TestCase):
         self.session_data = {
             "document": self.document,
             "user": self.user,
-            "s3_key": "path/to/file.pdf",
             "expires_at": UploadSession.default_expiration(),
         }
 
@@ -34,7 +33,6 @@ class UploadSessionModelTest(TestCase):
 
         session = UploadSession.objects.create(**self.session_data)
         self.assertEqual(session.status, UploadSession.Status.CREATED)
-        self.assertEqual(session.s3_key, "path/to/file.pdf")
         self.assertIsInstance(session.id, uuid.UUID)
 
     @patch("upload_session.models.timezone.now")

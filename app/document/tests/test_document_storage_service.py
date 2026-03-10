@@ -88,10 +88,15 @@ class TestS3FileLoaderService(unittest.TestCase):
         self.mock_s3.generate_presigned_post.return_value = expected_response
 
         user_id = "test-user-id"
+        upload_session_id = "test-upload-session-id"
+        document_id = "test-document-id"
         key = "test-key"
 
         result = self.service.generate_presigned_url_for_upload(
-            key, user_id=user_id
+            upload_session_id=upload_session_id,
+            document_id=document_id,
+            key=key,
+            user_id=user_id,
         )
 
         self.assertEqual(result, expected_response)

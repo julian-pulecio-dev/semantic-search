@@ -44,23 +44,23 @@ class TestDocumentUploadService(TestCase):
         self.assertEqual(result["status"], Document.Status.PENDING)
 
         self.mock_storage.build_document_key.assert_called_once_with(
-            self.user.id, document.id
+            self.user.id, session.id
         )
         self.mock_storage.generate_presigned_url_for_upload.assert_called_once_with(
-            key=document.s3_key, user_id=self.user.id
+            session_id=session.id,
+            document_id=document.id,
+            key=document.s3_key,
+            user_id=self.user.id,
         )
 
     def test_create_document_record_logic(self):
         """Verify that _create_document_record creates a document with the
         correct attributes."""
 
-        self.mock_storage.build_document_key.return_value = "custom/key/123"
-
         doc = self.service._create_document_record()
 
         self.assertEqual(doc.user, self.user)
         self.assertEqual(doc.status, Document.Status.PENDING)
-        self.assertEqual(doc.s3_key, "custom/key/123")
         self.assertTrue(Document.objects.filter(id=doc.id).exists())
 
     def test_create_upload_session_record_logic(self):
@@ -75,7 +75,6 @@ class TestDocumentUploadService(TestCase):
 
         self.assertEqual(session.document, doc)
         self.assertEqual(session.user, self.user)
-        self.assertEqual(session.s3_key, doc.s3_key)
         self.assertIsNotNone(session.expires_at)
 
     def test_s3_failure_behavior(self):

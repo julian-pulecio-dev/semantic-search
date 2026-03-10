@@ -23,10 +23,13 @@ class UploadSessionService:
         with transaction.atomic():
             document = self._create_document_record()
             session = self._create_upload_session_record(document=document)
+            self._assign_s3_key_to_document(document, session)
 
-        url = self.storage.generate_presigned_url_for_upload(
-            document.s3_key, user_id=self.user.id
-        )
+            url = self.storage.generate_presigned_url_for_upload(
+                upload_session_id=session.id,
+                key=document.s3_key,
+                user_id=self.user.id,
+            )
 
         return {
             "document_id": document.id,
@@ -34,6 +37,21 @@ class UploadSessionService:
             "url": url,
             "expires_at": session.expires_at,
         }
+
+    def _assign_s3_key_to_document(
+        self, document: Document, session: UploadSession
+    ):
+        """Assign the S3 key to the document record based on the upload session.
+
+        Args:
+            document: The Document instance to update.
+            session: The UploadSession instance containing the S3 key.
+        """
+
+        document.s3_key = self.storage.build_document_key(
+            self.user.id, session.id
+        )
+        document.save(update_fields=["s3_key"])
 
     def _create_document_record(self) -> Document:
         """Create a new document record in the database with a status of
@@ -47,10 +65,6 @@ class UploadSessionService:
             user=self.user,
             status=Document.Status.PENDING,
         )
-        document.s3_key = self.storage.build_document_key(
-            self.user.id, document.id
-        )
-        document.save(update_fields=["s3_key"])
         return document
 
     def _create_upload_session_record(
@@ -66,7 +80,7 @@ class UploadSessionService:
         session = UploadSession.objects.create(
             user=self.user,
             document=document,
+            status=UploadSession.Status.CREATED,
             expires_at=UploadSession.default_expiration(),
-            s3_key=document.s3_key,
         )
         return session

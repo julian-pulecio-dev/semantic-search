@@ -22,10 +22,14 @@ class DocumentUploadService:
         with transaction.atomic():
             document = self._create_document_record()
             session = self._create_upload_session_record(document=document)
+            self._assing_s3_key_to_document(document, session)
 
-        upload_url = self.storage.generate_presigned_url_for_upload(
-            key=document.s3_key, user_id=self.user.id
-        )
+            upload_url = self.storage.generate_presigned_url_for_upload(
+                session_id=session.id,
+                document_id=document.id,
+                key=document.s3_key,
+                user_id=self.user.id,
+            )
 
         return {
             "document_id": document.id,
@@ -34,6 +38,22 @@ class DocumentUploadService:
             "status": document.status,
             "expires_at": session.expires_at,
         }
+
+    def _assing_s3_key_to_document(
+        self, document: Document, session: UploadSession
+    ):
+        """Assign the S3 key to the document record based on the upload session.
+
+        Args:
+            document: The Document instance to update.
+            session: The UploadSession instance containing the S3 key.
+        """
+
+        document.s3_key = self.storage.build_document_key(
+            self.user.id, session.id
+        )
+        document.save(update_fields=["s3_key"])
+        return document
 
     def _create_document_record(self) -> Document:
         """Create a new document record in the database with a status of
@@ -47,10 +67,6 @@ class DocumentUploadService:
             user=self.user,
             status=Document.Status.PENDING,
         )
-        document.s3_key = self.storage.build_document_key(
-            self.user.id, document.id
-        )
-        document.save(update_fields=["s3_key"])
         return document
 
     def _create_upload_session_record(
@@ -67,7 +83,6 @@ class DocumentUploadService:
         session = UploadSession.objects.create(
             document=document,
             user=self.user,
-            s3_key=document.s3_key,
             expires_at=UploadSession.default_expiration(),
         )
         return session

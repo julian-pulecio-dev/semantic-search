@@ -9,7 +9,11 @@ class UploadSession(models.Model):
 
     class Status(models.TextChoices):
         CREATED = "created"
+        UPLOADING = "uploading"
         UPLOADED = "uploaded"
+        PROCESSING = "processing"
+        COMPLETED = "completed"
+        FAILED = "failed"
         EXPIRED = "expired"
 
     id = models.UUIDField(
@@ -25,8 +29,6 @@ class UploadSession(models.Model):
     )
 
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-
-    s3_key = models.CharField(max_length=512)
 
     status = models.CharField(
         max_length=20,

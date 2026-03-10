@@ -48,7 +48,9 @@ class UploadSessionServiceTest(TestCase):
         self.assertEqual(result["url"]["fields"]["key"], fake_s3_key)
 
         self.mock_storage.generate_presigned_url_for_upload.assert_called_once_with(
-            fake_s3_key, user_id=self.user.id
+            upload_session_id=UploadSession.objects.first().id,
+            key=fake_s3_key,
+            user_id=self.user.id,
         )
 
     def test_transaction_rollback_on_s3_failure(self):

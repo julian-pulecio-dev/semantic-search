@@ -23,7 +23,6 @@ class CreateUploadSessionViewTest(APITestCase):
             "url": {
                 "url": "https://s3-presigned-url.com",
                 "fields": {
-                    "key": "fake_s3_key",
                     "AWSAccessKeyId": "test-key",
                     "policy": "test-policy",
                     "signature": "test-signature",
