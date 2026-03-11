@@ -6,5 +6,4 @@ resource "aws_cloudwatch_event_permission" "allow_account" {
   principal    = "*"
   statement_id = "AllowAccountPutEvents"
   action       = "events:PutEvents"
-  event_bus_name = aws_cloudwatch_event_bus.document_bus.name
 }
