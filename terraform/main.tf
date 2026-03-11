@@ -15,6 +15,25 @@ module "sqs_queue" {
   dlq_name = module.sqs_dead_letter_queue.name
 }
 
+module "eventbridge_event_bus" {
+  source = "./modules/eventbridge_event_bus"
+  event_bus_name = "semantic-search-event-bus"
+}
+
+module "eventbridge_s3_notification" {
+  source = "./modules/eventbridge_s3_notification"
+  event_bus_name = module.eventbridge_event_bus.name
+  s3_bucket_id = module.s3_bucket.name
+  name = "s3-notification-rule"
+}
+
+module "eventbridge_target" {
+  source = "./modules/eventbridge_target"
+  event_bus_name = module.eventbridge_event_bus.name
+  target_arn = module.sqs_queue.arn
+  rule_name = module.eventbridge_s3_notification.event_rule_name
+}
+
 module "vpc" {
   source = "./modules/vpc"
 }

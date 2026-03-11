@@ -25,7 +25,7 @@ class DocumentUploadService:
             self._assing_s3_key_to_document(document, session)
 
             upload_url = self.storage.generate_presigned_url_for_upload(
-                session_id=session.id,
+                upload_session_id=session.id,
                 document_id=document.id,
                 key=document.s3_key,
                 user_id=self.user.id,

@@ -27,3 +27,23 @@ resource "aws_sqs_queue_redrive_allow_policy" "redrive_allow_policy" {
     sourceQueueArns   = [aws_sqs_queue.terraform_queue.arn]
   })
 }
+
+resource "aws_sqs_queue_policy" "allow_eventbridge" {
+  queue_url = aws_sqs_queue.terraform_queue.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid = "AllowEventBridgeSendMessage"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+        Action   = "sqs:SendMessage"
+        Resource = aws_sqs_queue.terraform_queue.arn
+      }
+    ]
+  })
+}
+

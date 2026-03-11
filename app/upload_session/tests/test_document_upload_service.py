@@ -47,7 +47,7 @@ class TestDocumentUploadService(TestCase):
             self.user.id, session.id
         )
         self.mock_storage.generate_presigned_url_for_upload.assert_called_once_with(
-            session_id=session.id,
+            upload_session_id=session.id,
             document_id=document.id,
             key=document.s3_key,
             user_id=self.user.id,
