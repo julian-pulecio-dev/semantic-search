@@ -1,11 +1,7 @@
-variable "s3_bucket_id" {
+variable "s3_bucket_name" {
   type = string
 }
 
 variable "name" {
-  type = string
-}
-
-variable "event_bus_name" {
   type = string
 }
