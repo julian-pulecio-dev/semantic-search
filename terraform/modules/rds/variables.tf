@@ -3,9 +3,9 @@ variable "vpc_id" {
   type        = string
 }
 
-variable "security_group_id" {
-  description = "The ID of the security group to allow access to RDS"
-  type        = string
+variable "allowed_security_group_ids" {
+  description = "The IDs of the security groups to allow access to RDS"
+  type        = list(string)
 }
 
 variable "db_name" {

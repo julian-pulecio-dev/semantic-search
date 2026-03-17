@@ -22,11 +22,11 @@ module "vpc" {
 module "rds" {
   source = "./modules/rds"
   vpc_id = module.vpc.vpc_id
-  security_group_id = module.vpc.security_group_id
   db_name = var.db_name
   db_user = var.db_user
   db_password = var.db_password
   subnet_group_name = module.vpc.subnet_group_name
+  allowed_security_group_ids = [module.vpc.security_group_id]
 }
 
 module "ecs" {
