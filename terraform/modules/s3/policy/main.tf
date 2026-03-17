@@ -1,14 +1,5 @@
-resource "aws_s3_bucket" "s3_bucket" {
-  bucket_prefix = var.name_prefix
-
-  tags = {
-    Name        = "semantic-search-bucket"
-    Environment = "Dev"
-  }
-}
-
 resource "aws_s3_bucket_policy" "s3_bucket_policy" {
-  bucket = aws_s3_bucket.s3_bucket.id
+  bucket = var.s3_bucket_name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -23,7 +14,7 @@ resource "aws_s3_bucket_policy" "s3_bucket_policy" {
           "s3:PutObject",
           "s3:PutObjectAcl"
         ]
-        Resource  = "${aws_s3_bucket.s3_bucket.arn}/*"
+        Resource  = "${var.s3_bucket_arn}/*"
       }
     ]
   })

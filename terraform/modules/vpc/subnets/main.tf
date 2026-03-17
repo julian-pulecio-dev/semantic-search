@@ -10,10 +10,6 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_db_subnet_group" "subnet_group" {
-  name       = "rds-subnet-group"
+  name       = "${var.name}-rds-subnet-group"
   subnet_ids = aws_subnet.public[*].id
-
-  tags = {
-    Name = "RDS subnet group"
-  }
 }

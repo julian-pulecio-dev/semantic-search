@@ -29,8 +29,8 @@ resource "aws_cloudwatch_event_rule" "debug_all" {
   })
 }
 
-resource "aws_cloudwatch_log_group" "eventbridge_debug" {
-  name =  "${var.name}/eventbridge/debug"
+resource "aws_cloudwatch_log_group" "eventbridge_debug_all" {
+  name =  "${var.name}/eventbridge/debug/all"
   retention_in_days = 1
 }
 
