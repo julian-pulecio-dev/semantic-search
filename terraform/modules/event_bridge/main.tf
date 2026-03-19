@@ -8,10 +8,6 @@ module "policy_cloudwatch" {
   name = "event-bridge-cloudwatch-policy"
 }
 
-module "policy_sqs" {
-  source = "./policy_sqs"
-  sqs_url = var.sqs_queue_url
-}
 
 module "rule_debug_all" {
   source = "./rule_debug_all"
@@ -25,6 +21,13 @@ module "rule_s3_upload" {
   s3_bucket_name = var.bucket_name
 }
 
+
+module "policy_sqs" {
+  source = "./policy_sqs"
+  sqs_url = var.sqs_queue_url
+  sqs_arn = var.sqs_queue_arn
+  event_rule_arn = module.rule_s3_upload.event_rule_arn
+}
 
 module "target_sqs" {
   source = "./target_sqs"
