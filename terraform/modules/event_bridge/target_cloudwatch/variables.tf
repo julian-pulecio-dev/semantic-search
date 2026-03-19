@@ -17,3 +17,7 @@ variable "event_rule_arn" {
 variable "bucket_dependency" {
   type = any
 }
+
+variable "rule_dependency" {
+  description = "Dependency to ensure rule destroyed after target"
+}
