@@ -1,13 +1,13 @@
 output "ecs_cluster_name" {
-  value = module.ecs.ecs_cluster_name
+  value = module.ecs_web.ecs_cluster_name
 }
 
 output "ecs_service_name" {
-  value = module.ecs.ecs_service_name
+  value = module.ecs_web.ecs_service_name
 }
 
 output "migration_task_definition" {
-  value = module.ecs.migration_task_definition
+  value = module.ecs_web.migration_task_definition
 }
 
 output "public_subnets" {
