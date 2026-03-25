@@ -105,7 +105,7 @@ resource "aws_ecs_task_definition" "doc_chunking" {
       essential = true
       cpu       = 256
       memory    = 512
-      command   = ["python", "/app/workers/document_chunking.py"]
+      command   = ["python", "/app/workers/document_chunking/run.py"]
 
       logConfiguration = {
         logDriver = "awslogs"
