@@ -67,7 +67,10 @@ resource "aws_iam_policy" "ecs_bedrock_nova" {
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream"
         ]
-        Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-*"
+        Resource = [
+          "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-*",
+          "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0"
+        ]
       }
     ]
   })
@@ -105,7 +108,7 @@ resource "aws_ecs_task_definition" "doc_chunking" {
       essential = true
       cpu       = 256
       memory    = 512
-      command   = ["python", "/app/workers/document_chunking/run.py"]
+      command   = ["python", "-m", "workers.document_chunking.run"]
 
       logConfiguration = {
         logDriver = "awslogs"

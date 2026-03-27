@@ -3,11 +3,6 @@ import sys
 import signal
 import logging
 
-from workers.worker_handler import WorkerHandler
-from workers.document_chunking.document_chunking_handler import (
-    DocumentChunkingHandler,
-)
-
 
 def setup_django():
     if not os.environ.get("DJANGO_SETTINGS_MODULE"):
@@ -28,6 +23,9 @@ if __name__ == "__main__":
     )
 
     setup_django()
+
+    from workers.worker_handler import WorkerHandler
+    from workers.document_chunking.handler import DocumentChunkingHandler
 
     processor = DocumentChunkingHandler()
 

@@ -19,10 +19,10 @@ class WorkerHandler:
     queue_url: str
     max_workers: int
     visibility_timeout: int
+    processor: Handler
     logger: logging.Logger = field(
         default_factory=lambda: logging.getLogger(__name__)
     )
-    processor: Handler
 
     def __post_init__(self):
         self._stop_event = threading.Event()
