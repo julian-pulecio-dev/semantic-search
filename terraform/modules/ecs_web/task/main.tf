@@ -54,7 +54,10 @@ resource "aws_iam_policy" "ecs_bedrock_nova" {
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream"
         ]
-        Resource = "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-*"
+        Resource = [
+          "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-*",
+          "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0"
+        ]
       }
     ]
   })
@@ -68,6 +71,31 @@ resource "aws_iam_role_policy_attachment" "ecs_s3_write_attach" {
 resource "aws_iam_role_policy_attachment" "ecs_bedrock_nova_attach" {
   role       = aws_iam_role.ecs_task.name
   policy_arn = aws_iam_policy.ecs_bedrock_nova.arn
+}
+
+resource "aws_iam_policy" "ecs_exec" {
+  name = "${var.name}-ecs-exec"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssmmessages:CreateControlChannel",
+          "ssmmessages:CreateDataChannel",
+          "ssmmessages:OpenControlChannel",
+          "ssmmessages:OpenDataChannel"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_exec_attach" {
+  role       = aws_iam_role.ecs_task.name
+  policy_arn = aws_iam_policy.ecs_exec.arn
 }
 
 resource "aws_ecs_task_definition" "app" {

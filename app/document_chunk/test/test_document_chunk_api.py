@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
@@ -34,21 +35,21 @@ class DocumentChunkViewsTestCase(APITestCase):
         self.chunk1 = DocumentChunk.objects.create(
             document=self.document,
             content="Chunk 1 content",
-            embedding=[0.0] * 1536,
+            embedding=[0.0] * 1024,
             chunk_index=0,
         )
 
         self.chunk2 = DocumentChunk.objects.create(
             document=self.document,
             content="Chunk 2 content",
-            embedding=[0.0] * 1536,
+            embedding=[0.0] * 1024,
             chunk_index=1,
         )
 
         self.other_chunk = DocumentChunk.objects.create(
             document=self.other_document,
             content="Other user chunk",
-            embedding=[0.0] * 1536,
+            embedding=[0.0] * 1024,
             chunk_index=0,
         )
 
@@ -125,5 +126,66 @@ class DocumentChunkViewsTestCase(APITestCase):
         )
 
         response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class SemanticSearchViewTestCase(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="search@test.com", password="password123"
+        )
+        self.document = Document.objects.create(
+            user=self.user,
+            url="http://test.com/file.pdf",
+            s3_key="search-key.pdf",
+        )
+        self.embedding = [0.1] * 1024
+        self.url = reverse("semantic-search")
+
+        self.chunk_with_embedding = DocumentChunk.objects.create(
+            document=self.document,
+            content="Chunk with embedding",
+            embedding=self.embedding,
+            chunk_index=0,
+        )
+        self.chunk_without_embedding = DocumentChunk.objects.create(
+            document=self.document,
+            content="Chunk without embedding",
+            embedding=None,
+            chunk_index=1,
+        )
+
+    @patch("document_chunk.views.EmbeddingsProcessor")
+    def test_search_excludes_chunks_with_null_embedding(
+        self, mock_processor_cls
+    ):
+        mock_processor_cls.return_value.get_embedding.return_value = (
+            self.embedding
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(self.url, {"query": "test", "top_k": 10})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {chunk["id"] for chunk in response.data}
+        self.assertNotIn(str(self.chunk_without_embedding.id), returned_ids)
+
+    @patch("document_chunk.views.EmbeddingsProcessor")
+    def test_search_returns_chunks_with_embedding(self, mock_processor_cls):
+        mock_processor_cls.return_value.get_embedding.return_value = (
+            self.embedding
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(self.url, {"query": "test", "top_k": 10})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {chunk["id"] for chunk in response.data}
+        self.assertIn(str(self.chunk_with_embedding.id), returned_ids)
+
+    def test_search_requires_authentication(self):
+        response = self.client.post(self.url, {"query": "test", "top_k": 5})
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

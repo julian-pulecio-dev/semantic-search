@@ -8,13 +8,9 @@ from user.models import User
 class UploadSession(models.Model):
 
     class Status(models.TextChoices):
-        CREATED = "created"
-        UPLOADING = "uploading"
-        UPLOADED = "uploaded"
-        PROCESSING = "processing"
-        COMPLETED = "completed"
-        FAILED = "failed"
-        EXPIRED = "expired"
+        CREATED = "CREATED", "CREATED"
+        COMPLETED = "COMPLETED", "COMPLETED"
+        FAILED = "FAILED", "FAILED"
 
     id = models.UUIDField(
         primary_key=True,

@@ -20,7 +20,7 @@ class DocumentChunkModelTest(TestCase):
             user=self.user,
         )
 
-        self.embedding = [0.1] * 1536
+        self.embedding = [0.1] * 1024
 
     def test_create_document_chunk(self):
         chunk = DocumentChunk.objects.create(
@@ -59,6 +59,17 @@ class DocumentChunkModelTest(TestCase):
 
         with self.assertRaises(ValidationError):
             chunk.full_clean()
+
+    def test_create_document_chunk_without_embedding(self):
+        chunk = DocumentChunk.objects.create(
+            document=self.document,
+            content="Chunk without embedding",
+            embedding=None,
+            chunk_index=0,
+        )
+
+        chunk.refresh_from_db()
+        self.assertIsNone(chunk.embedding)
 
     def test_cascade_delete_document(self):
         chunk = DocumentChunk.objects.create(

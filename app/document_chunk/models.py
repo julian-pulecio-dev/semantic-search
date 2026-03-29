@@ -23,6 +23,8 @@ class DocumentChunk(models.Model):
 
     embedding = VectorField(
         dimensions=1024,
+        null=True,
+        blank=True,
     )
 
     chunk_index = models.PositiveIntegerField(

@@ -10,6 +10,7 @@ class Document(models.Model):
         PROCESSING = "PROCESSING", "PROCESSING"
         READY = "READY", "READY"
         FAILED = "FAILED", "FAILED"
+        INCOMPLETED = "INCOMPLETED", "INCOMPLETED"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     document_type = models.ForeignKey(

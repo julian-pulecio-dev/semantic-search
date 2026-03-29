@@ -52,9 +52,10 @@ class UploadSessionModelTest(TestCase):
         """Verify that the status field only accepts defined choices."""
 
         session = UploadSession.objects.create(**self.session_data)
-        session.status = UploadSession.Status.UPLOADED
+        session.status = UploadSession.Status.COMPLETED
         session.save()
-        self.assertEqual(session.status, "uploaded")
+        session.refresh_from_db()
+        self.assertEqual(session.status, UploadSession.Status.COMPLETED)
 
     def test_cascade_on_user_deletion(self):
         """Verify that deleting a user also deletes associated upload

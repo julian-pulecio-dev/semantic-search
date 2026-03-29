@@ -14,3 +14,8 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
             "embedding",
         ]
         read_only_fields = fields
+
+
+class SemanticSearchSerializer(serializers.Serializer):
+    query = serializers.CharField()
+    top_k = serializers.IntegerField(min_value=1, max_value=50, default=5)
