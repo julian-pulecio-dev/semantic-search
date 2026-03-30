@@ -17,3 +17,8 @@ variable "subnet_ids" {
 variable "security_group_id" {
   type = string
 }
+
+variable "desired_count" {
+  description = "Number of ECS tasks to run. Set to 0 before destroy."
+  type        = number
+}

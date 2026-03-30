@@ -3,7 +3,7 @@ resource "aws_ecs_service" "doc_chunking" {
   cluster         = var.cluster_arn
   task_definition = var.task_definition_arn
   launch_type     = "FARGATE"
-  desired_count   = 1
+  desired_count   = var.desired_count
 
   network_configuration {
     subnets          = var.subnet_ids
@@ -13,8 +13,5 @@ resource "aws_ecs_service" "doc_chunking" {
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
-
-  lifecycle {
-    ignore_changes = [desired_count]
-  }
+  wait_for_steady_state              = true
 }

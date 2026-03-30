@@ -145,7 +145,9 @@ class PDFTextExtractor:
         gap_left = 0.5 - 0.08
         gap_right = 0.5 + 0.08
 
-        words_in_gap = sum(1 for x in relative_x0 if gap_left <= x <= gap_right)
+        words_in_gap = sum(
+            1 for x in relative_x0 if gap_left <= x <= gap_right
+        )
         left_count = sum(1 for x in relative_x0 if x < gap_left)
         right_count = sum(1 for x in relative_x0 if x > gap_right)
 
@@ -193,7 +195,9 @@ class PDFTextExtractor:
         lines: defaultdict[int, list] = defaultdict(list)
 
         for word in words:
-            bucket = round(word["top"] / self.line_tolerance) * self.line_tolerance
+            bucket = (
+                round(word["top"] / self.line_tolerance) * self.line_tolerance
+            )
             lines[bucket].append(word)
 
         for bucket in lines:

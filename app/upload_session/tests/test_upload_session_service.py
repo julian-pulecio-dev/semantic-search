@@ -2,6 +2,7 @@ from unittest import mock
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from document.models import Document
+from document_type.models import DocumentType
 from upload_session.models import UploadSession
 from upload_session.services.upload_session_service import UploadSessionService
 
@@ -13,9 +14,18 @@ class UploadSessionServiceTest(TestCase):
         self.user = User.objects.create_user(
             email="testuser@example.com", password="password123"
         )
+        self.document_type = DocumentType.objects.create(name="Invoice")
         self.mock_storage = mock.MagicMock()
         self.service = UploadSessionService(
             user=self.user, storage=self.mock_storage
+        )
+
+    def _create_document(self):
+        """Helper that creates a Document with the required document_type."""
+        return Document.objects.create(
+            user=self.user,
+            status=Document.Status.PENDING,
+            document_type=self.document_type,
         )
 
     def test_create_upload_session_success(self):
@@ -35,12 +45,15 @@ class UploadSessionServiceTest(TestCase):
             fake_presigned_data
         )
 
-        result = self.service.create_upload_session()
+        with mock.patch.object(
+            self.service,
+            "_create_document_record",
+            side_effect=self._create_document,
+        ):
+            result = self.service.create_upload_session()
 
         self.assertEqual(Document.objects.count(), 1)
         self.assertEqual(UploadSession.objects.count(), 1)
-
-        _ = Document.objects.first()
 
         self.assertEqual(result["url"], fake_presigned_data)
         self.assertIsInstance(result["url"], dict)
@@ -58,8 +71,13 @@ class UploadSessionServiceTest(TestCase):
             Exception("S3 Connection Error")
         )
 
-        with self.assertRaises(Exception):
-            self.service.create_upload_session()
+        with mock.patch.object(
+            self.service,
+            "_create_document_record",
+            side_effect=self._create_document,
+        ):
+            with self.assertRaises(Exception):
+                self.service.create_upload_session()
 
         self.assertEqual(Document.objects.count(), 0)
         self.assertEqual(UploadSession.objects.count(), 0)

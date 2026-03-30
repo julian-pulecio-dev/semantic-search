@@ -9,3 +9,4 @@ output "ecs_service_name" {
 output "migration_task_definition" {
   value = module.ecs_task_definition_migrate.arn
 }
+

@@ -1,5 +1,5 @@
 import boto3
-from core.exceptions.storage_exceptions import (
+from document.services.exceptions.storage_exceptions import (
     S3FileNotFoundError,
     map_s3_exception,
     S3ServiceError,

@@ -43,3 +43,10 @@ variable "security_group_id" {
     description = "The security group ID for the ECS tasks"
     type        = string
 }
+
+variable "desired_count" {
+  description = "Number of ECS tasks to run. Set to 0 before destroy."
+  type        = number
+  default     = null
+  nullable    = true
+}

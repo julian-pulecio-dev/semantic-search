@@ -23,13 +23,13 @@ class DocumentModelTest(TestCase):
         """Validate that a Document can be created with valid data."""
 
         doc = Document.objects.create(
-            status=Document.Status.READY,
+            status=Document.Status.PROCESSED,
             user=self.user,
             document_type=self.document_type,
         )
 
         self.assertTrue(isinstance(doc.id, uuid.UUID))
-        self.assertEqual(doc.status, Document.Status.READY)
+        self.assertEqual(doc.status, Document.Status.PROCESSED)
         self.assertEqual(doc.user, self.user)
         self.assertEqual(doc.document_type, self.document_type)
         self.assertIsNotNone(doc.uploaded_at)
@@ -57,7 +57,7 @@ class DocumentModelTest(TestCase):
         with self.assertRaises(IntegrityError):
             Document.objects.create(
                 s3_key=s3_key,
-                status=Document.Status.READY,
+                status=Document.Status.PROCESSED,
                 user=self.user,
                 document_type=self.document_type,
             )
@@ -96,7 +96,7 @@ class DocumentModelTest(TestCase):
         ProtectedError."""
 
         _ = Document.objects.create(
-            status=Document.Status.READY,
+            status=Document.Status.PROCESSED,
             user=self.user,
             document_type=self.document_type,
         )
@@ -105,11 +105,12 @@ class DocumentModelTest(TestCase):
             self.document_type.delete()
 
     def test_document_creation_without_document_type(self):
-        """DocumentType is optional, so creation without it should succeed."""
+        """document_type is required at the DB level; omitting it raises an error."""
 
-        doc = Document.objects.create(
-            status=Document.Status.PENDING,
-            user=self.user,
-        )
+        from django.db import IntegrityError
 
-        self.assertIsNone(doc.document_type)
+        with self.assertRaises(IntegrityError):
+            Document.objects.create(
+                status=Document.Status.PENDING,
+                user=self.user,
+            )

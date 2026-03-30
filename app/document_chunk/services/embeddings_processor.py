@@ -10,6 +10,15 @@ from typing import List, Dict, Any, Optional, Generator
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
+from document_chunk.services.exceptions.embedding_exceptions import (
+    EmbeddingError,
+    EmbeddingThrottledError,
+    EmbeddingServiceError,
+    EmbeddingValidationError,
+    handle_embedding_errors,
+    map_bedrock_exception,
+)
+
 logger = logging.getLogger(__name__)
 
 RETRYABLE_ERROR_CODES = {
@@ -81,13 +90,14 @@ class TitanEmbeddingAdapter:
         Returns:
             A list of floats representing the embedding vector.
         Raises:
-            ValueError: If the response does not contain a valid embedding.
+            EmbeddingValidationError: If the response does not contain
+            a valid embedding.
         """
         result = json.loads(response_body)
         embedding = result.get("embedding")
 
         if not embedding:
-            raise ValueError("No embedding returned from model")
+            raise EmbeddingValidationError("No embedding returned from model")
 
         return embedding
 
@@ -131,6 +141,7 @@ class EmbeddingsProcessor:
             config=config,
         )
 
+    @handle_embedding_errors
     def get_embedding(self, text: str) -> List[float]:
         """
         Convenience method for embedding a single text input.
@@ -139,12 +150,13 @@ class EmbeddingsProcessor:
         Returns:
             A list of floats representing the embedding vector for the input text.
         Raises:
-            RuntimeError: If embedding generation fails after retries.
+            EmbeddingError: If embedding generation fails after retries.
         """
         result = self.embed_batch([text])
         result.raise_on_errors()
         return result.embeddings[0]
 
+    @handle_embedding_errors
     def embed_batch(self, texts: List[str]) -> BatchEmbeddingResult:
         """
         Concurrent embedding execution.
@@ -160,7 +172,7 @@ class EmbeddingsProcessor:
         Returns:
             A BatchEmbeddingResult containing embeddings, errors, and throttle count.
         Raises:
-            RuntimeError: If embedding generation fails after retries.
+            EmbeddingError: If a boto3-level error occurs outside individual futures.
         """
         embeddings: List[Optional[List[float]]] = [None] * len(texts)
         errors: Dict[int, Exception] = {}
@@ -182,7 +194,9 @@ class EmbeddingsProcessor:
                     throttle_count += request_throttles
                     embeddings[idx] = self.adapter.parse_response(raw_response)
 
-                except Exception as exc:
+                except (EmbeddingError, RuntimeError) as exc:
+                    # EmbeddingError  — retries exhausted or non-retryable Bedrock error
+                    # RuntimeError    — retry loop exited unexpectedly
                     logger.error("Embedding failed at index %d: %s", idx, exc)
                     errors[idx] = exc
 
@@ -205,13 +219,21 @@ class EmbeddingsProcessor:
         Returns (response_body, throttle_count) so the caller can
         aggregate throttle events across concurrent futures without
         shared mutable state.
+
+        Intentionally NOT decorated with @handle_embedding_errors — this
+        method inspects ClientError.response["Error"]["Code"] directly to
+        drive retry logic. Converting to domain exceptions here would hide
+        the error code before the retry decision is made.
+
         Args:
             payload: The request payload to send to the model.
         Returns:
             A tuple containing the raw response body and the
             number of throttle events encountered.
         Raises:
-            RuntimeError: If embedding generation fails after retries.
+            EmbeddingThrottledError: If throttling persists after all retries.
+            EmbeddingServiceError: If a non-retryable or unhandled ClientError occurs.
+            RuntimeError: If the retry loop exits without returning or raising.
         """
         backoff = self.initial_backoff
         throttle_count = 0
@@ -233,8 +255,8 @@ class EmbeddingsProcessor:
                 retryable = error_code in RETRYABLE_ERROR_CODES
                 last_attempt = attempt == self.max_retries - 1
 
-                if not retryable or last_attempt:
-                    raise
+                if not retryable:
+                    raise map_bedrock_exception(e) from e
 
                 if error_code == "ThrottlingException":
                     throttle_count += 1
@@ -251,5 +273,16 @@ class EmbeddingsProcessor:
 
                 time.sleep(sleep_time)
                 backoff *= 2
+
+                if last_attempt:
+                    exc_class = (
+                        EmbeddingThrottledError
+                        if error_code == "ThrottlingException"
+                        else EmbeddingServiceError
+                    )
+                    raise exc_class(
+                        f"Retries exhausted for {error_code} "
+                        f"after {self.max_retries} attempts."
+                    ) from e
 
         raise RuntimeError("Retry loop exited unexpectedly")

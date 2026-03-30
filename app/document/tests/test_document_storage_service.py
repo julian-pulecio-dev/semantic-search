@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 from botocore.exceptions import ClientError, BotoCoreError
-from core.exceptions.storage_exceptions import (
+from document.services.exceptions.storage_exceptions import (
     S3FileNotFoundError,
     S3ServiceError,
 )

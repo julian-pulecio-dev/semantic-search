@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from document.models import Document
+from document_type.models import DocumentType
 from upload_session.models import UploadSession
 from upload_session.services.document_upload_service import (
     DocumentUploadService,
@@ -15,6 +16,7 @@ class TestDocumentUploadService(TestCase):
         self.user = User.objects.create_user(
             email="test@example.com", password="testpassword"
         )
+        self.document_type = DocumentType.objects.create(name="Report")
         self.mock_storage = MagicMock()
         self.service = DocumentUploadService(
             user=self.user, storage=self.mock_storage
@@ -30,7 +32,9 @@ class TestDocumentUploadService(TestCase):
         )
         self.mock_storage.build_document_key.return_value = "documents/1/1"
 
-        result = self.service.create_upload_request()
+        result = self.service.create_upload_request(
+            document_type=self.document_type
+        )
 
         self.assertEqual(Document.objects.count(), 1)
         self.assertEqual(UploadSession.objects.count(), 1)
@@ -57,10 +61,13 @@ class TestDocumentUploadService(TestCase):
         """Verify that _create_document_record creates a document with the
         correct attributes."""
 
-        doc = self.service._create_document_record()
+        doc = self.service._create_document_record(
+            document_type=self.document_type
+        )
 
         self.assertEqual(doc.user, self.user)
         self.assertEqual(doc.status, Document.Status.PENDING)
+        self.assertEqual(doc.document_type, self.document_type)
         self.assertTrue(Document.objects.filter(id=doc.id).exists())
 
     def test_create_upload_session_record_logic(self):
@@ -68,7 +75,10 @@ class TestDocumentUploadService(TestCase):
         with the correct attributes."""
 
         doc = Document.objects.create(
-            user=self.user, status=Document.Status.PENDING, s3_key="key"
+            user=self.user,
+            status=Document.Status.PENDING,
+            document_type=self.document_type,
+            s3_key="key",
         )
 
         session = self.service._create_upload_session_record(doc)
@@ -86,4 +96,6 @@ class TestDocumentUploadService(TestCase):
         )
 
         with self.assertRaises(Exception):
-            self.service.create_upload_request(key="test")
+            self.service.create_upload_request(
+                document_type=self.document_type
+            )

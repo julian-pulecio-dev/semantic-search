@@ -9,7 +9,7 @@ class DocumentUploadService:
         self.user = user
         self.storage = storage
 
-    def create_upload_request(self) -> dict:
+    def create_upload_request(self, document_type) -> dict:
         """Creates a new document record and generates a presigned URL for
         uploading the file to S3.
 
@@ -20,7 +20,9 @@ class DocumentUploadService:
         """
 
         with transaction.atomic():
-            document = self._create_document_record()
+            document = self._create_document_record(
+                document_type=document_type
+            )
             session = self._create_upload_session_record(document=document)
             self._assing_s3_key_to_document(document, session)
 
@@ -55,7 +57,7 @@ class DocumentUploadService:
         document.save(update_fields=["s3_key"])
         return document
 
-    def _create_document_record(self) -> Document:
+    def _create_document_record(self, document_type) -> Document:
         """Create a new document record in the database with a status of
         PENDING.
 
@@ -66,6 +68,7 @@ class DocumentUploadService:
         document = Document.objects.create(
             user=self.user,
             status=Document.Status.PENDING,
+            document_type=document_type,
         )
         return document
 

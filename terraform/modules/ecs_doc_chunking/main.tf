@@ -33,6 +33,7 @@ module "service" {
   task_definition_arn = module.ecs_task_definition.arn
   subnet_ids          = var.subnet_ids
   security_group_id   = var.security_group_id
+  desired_count       = coalesce(var.desired_count, 1)
 }
 
 module "autoscaling" {

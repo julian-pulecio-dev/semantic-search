@@ -12,4 +12,6 @@ resource "aws_ecs_service" "ecs_service" {
     security_groups = [var.vpc_security_group_id]
     assign_public_ip = true
   }
+
+  wait_for_steady_state = true
 }

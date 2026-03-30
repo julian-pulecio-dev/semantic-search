@@ -6,15 +6,29 @@ from typing import ClassVar, Optional, List
 
 from document.models import Document
 from document_chunk.models import DocumentChunk
+from document_chunk.services.exceptions.embedding_exceptions import (
+    EmbeddingError,
+    EmbeddingValidationError,
+)
 from document_chunk.services.embeddings_processor import EmbeddingsProcessor
-from document_chunk.services.exceptions import DocumentProcessingError
+from document_chunk.services.exceptions.document_chunk_exceptions import (
+    DocumentProcessingError,
+    DocumentInvalidStatusError,
+    DocumentPersistenceError,
+    handle_persistence_errors,
+)
 from document_chunk.services.pdf_text_extractor import PDFTextExtractor
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 
-# Re-exported for backward compatibility with existing imports.
-__all__ = ["DocumentChunkProcessor", "DocumentProcessingError", "Chunk"]
+__all__ = [
+    "DocumentChunkProcessor",
+    "DocumentProcessingError",
+    "DocumentInvalidStatusError",
+    "DocumentPersistenceError",
+    "Chunk",
+]
 
 
 @dataclass(frozen=True)
@@ -51,6 +65,10 @@ class DocumentChunkProcessor:
     Orchestrates the full document processing pipeline: text extraction,
     chunking, embedding generation, and persistence.
 
+    Only processes documents whose status is CREATED. Raises
+    DocumentInvalidStatusError immediately if the document is in any
+    other status.
+
     Text extraction is delegated to PDFTextExtractor, keeping this class
     focused on chunking, embeddings, and document state management.
 
@@ -58,7 +76,7 @@ class DocumentChunkProcessor:
     batch fails, the affected chunks are saved without an embedding and the
     document is marked as INCOMPLETED, allowing the caller to retry only
     the chunks that are missing embeddings. If all batches succeed, the
-    document is marked as COMPLETED.
+    document is marked as PROCESSED.
     """
 
     EMBEDDING_BATCH_SIZE: ClassVar[int] = 100
@@ -77,11 +95,13 @@ class DocumentChunkProcessor:
             self.embedding_processor = EmbeddingsProcessor()
 
         if self.splitter is None:
-            self.splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-                encoding_name="cl100k_base",
-                chunk_size=500,
-                chunk_overlap=50,
-                separators=["\n\n", "\n", ". ", " ", ""],
+            self.splitter = (
+                RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+                    encoding_name="cl100k_base",
+                    chunk_size=500,
+                    chunk_overlap=50,
+                    separators=["\n\n", "\n", ". ", " ", ""],
+                )
             )
 
         self._update_document_status(Document.Status.PROCESSING)
@@ -89,12 +109,22 @@ class DocumentChunkProcessor:
     def process(self) -> List[Chunk]:
         """
         Run the full processing pipeline for the document.
+
+        Only processes documents in CREATED status.
+
         Returns:
             A list of Chunk instances, each with an embedding if generation
             succeeded, or embedding=None if its batch failed.
         Raises:
-            DocumentProcessingError: If text extraction or persistence fails.
+            DocumentInvalidStatusError: If the document is not in CREATED status.
+            DocumentPersistenceError: If saving chunks or updating status fails.
         """
+        if self.document.status != Document.Status.CREATED:
+            raise DocumentInvalidStatusError(
+                f"Document {self.document.id} cannot be processed: "
+                f"expected status CREATED, got {self.document.status!r}."
+            )
+
         logger.info("Processing document %s", self.document.id)
 
         pages = self.pdf_extractor.extract(
@@ -113,7 +143,11 @@ class DocumentChunkProcessor:
 
         failed_count = sum(1 for c in chunks if c.embedding is None)
 
-        self._save_chunks(chunks)
+        try:
+            self._save_chunks(chunks)
+        except DocumentPersistenceError:
+            self._update_document_status(Document.Status.FAILED)
+            raise
 
         if failed_count:
             logger.warning(
@@ -124,9 +158,10 @@ class DocumentChunkProcessor:
             self._update_document_status(Document.Status.INCOMPLETED)
         else:
             logger.info(
-                "Embedding generation completed for document %s", self.document.id
+                "Embedding generation completed for document %s",
+                self.document.id,
             )
-            self._update_document_status(Document.Status.COMPLETED)
+            self._update_document_status(Document.Status.PROCESSED)
 
         return chunks
 
@@ -152,7 +187,9 @@ class DocumentChunkProcessor:
 
         return chunks
 
-    def _attach_embeddings_in_batches(self, chunks: List[Chunk]) -> List[Chunk]:
+    def _attach_embeddings_in_batches(
+        self, chunks: List[Chunk]
+    ) -> List[Chunk]:
         """
         Attaches embeddings to chunks in batches of `embedding_batch_size`.
 
@@ -168,7 +205,9 @@ class DocumentChunkProcessor:
         result = []
 
         for batch_start in range(0, len(chunks), self.embedding_batch_size):
-            batch = chunks[batch_start: batch_start + self.embedding_batch_size]
+            batch = chunks[
+                batch_start: batch_start + self.embedding_batch_size
+            ]
             result.extend(self._attach_embeddings(batch))
 
         return result
@@ -195,7 +234,7 @@ class DocumentChunkProcessor:
                 for chunk, emb in zip(chunks, embedding_result.embeddings)
             ]
 
-        except Exception as e:
+        except (EmbeddingError, EmbeddingValidationError, RuntimeError) as e:
             logger.error(
                 "Embedding batch failed for document %s (%d chunks skipped): %s",
                 self.document.id,
@@ -204,6 +243,7 @@ class DocumentChunkProcessor:
             )
             return chunks
 
+    @handle_persistence_errors
     def _save_chunks(self, chunks: List[Chunk]) -> None:
         """
         Persists all chunks to the database in a single bulk operation.
@@ -212,49 +252,39 @@ class DocumentChunkProcessor:
         Args:
             chunks: A list of Chunk objects, with or without embeddings.
         Raises:
-            DocumentProcessingError: If saving fails.
+            DocumentPersistenceError: If saving fails.
         """
-        try:
-            DocumentChunk.objects.bulk_create(
-                [
-                    DocumentChunk(
-                        document=self.document,
-                        content=chunk.content,
-                        embedding=chunk.embedding,
-                        chunk_index=index,
-                    )
-                    for index, chunk in enumerate(chunks)
-                ]
-            )
+        DocumentChunk.objects.bulk_create(
+            [
+                DocumentChunk(
+                    document=self.document,
+                    content=chunk.content,
+                    embedding=chunk.embedding,
+                    chunk_index=index,
+                )
+                for index, chunk in enumerate(chunks)
+            ]
+        )
 
-            logger.info(
-                "Saved %d chunks for document %s",
-                len(chunks),
-                self.document.id,
-            )
-        except Exception as e:
-            self._update_document_status(Document.Status.FAILED)
-            raise DocumentProcessingError(
-                f"Failed saving chunks for document {self.document.id}: {e}"
-            ) from e
+        logger.info(
+            "Saved %d chunks for document %s",
+            len(chunks),
+            self.document.id,
+        )
 
+    @handle_persistence_errors
     def _update_document_status(self, status: str) -> None:
         """
         Updates the status of the document being processed.
         Args:
             status: The new status to set on the document.
         Raises:
-            DocumentProcessingError: If the document status cannot be updated.
+            DocumentPersistenceError: If the document status cannot be updated.
         """
-        try:
-            self.document.status = status
-            self.document.save(update_fields=["status"])
-            logger.info(
-                "Updated document %s status to %s",
-                self.document.id,
-                status,
-            )
-        except Exception as e:
-            raise DocumentProcessingError(
-                f"Failed to update status for document {self.document.id}: {e}"
-            ) from e
+        self.document.status = status
+        self.document.save(update_fields=["status"])
+        logger.info(
+            "Updated document %s status to %s",
+            self.document.id,
+            status,
+        )

@@ -39,7 +39,7 @@ class DocumentViewsTestCase(APITestCase):
         self.document_type = DocumentType.objects.create(name="Invoice")
 
         self.doc1 = Document.objects.create(
-            status=Document.Status.READY,
+            status=Document.Status.PROCESSED,
             user=self.regular_user,
             s3_key="key1",
             document_type=self.document_type,

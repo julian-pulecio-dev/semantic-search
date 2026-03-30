@@ -69,3 +69,10 @@ variable "scale_out_threshold" {
   type        = number
   default     = 5
 }
+
+variable "desired_count" {
+  description = "Number of ECS tasks to run. Set to 0 before destroy."
+  type        = number
+  default     = null
+  nullable    = true
+}

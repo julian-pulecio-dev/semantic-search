@@ -81,7 +81,7 @@ module "ecs_service" {
   name = "${var.name}-ecs-service"
   cluster_arn = module.ecs_cluster.arn
   task_definition_arn = module.ecs_task_definition.arn
-  desired_count = 2
+  desired_count = coalesce(var.desired_count, 2)
   vpc_subnets_ids = var.subnet_ids
   vpc_security_group_id = var.security_group_id
 }

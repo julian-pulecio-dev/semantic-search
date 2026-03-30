@@ -1,5 +1,6 @@
-from functools import wraps
-from botocore.exceptions import ClientError, BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
+
+from core.exceptions.base_exception_handler import BaseErrorHandler
 
 
 class DocumentStorageError(Exception):
@@ -32,29 +33,15 @@ class S3ServiceError(DocumentStorageError):
     pass
 
 
-NOT_FOUND_ERRORS = {
-    "NoSuchKey",
-    "NoSuchBucket",
-    "NotFound",
-}
-
+NOT_FOUND_ERRORS = {"NoSuchKey", "NoSuchBucket", "NotFound"}
 ACCESS_ERRORS = {
     "AccessDenied",
     "SignatureDoesNotMatch",
     "InvalidAccessKeyId",
     "InvalidToken",
 }
-
-BUCKET_ERRORS = {
-    "BucketAlreadyExists",
-    "InvalidBucketName",
-}
-
-UPLOAD_ERRORS = {
-    "EntityTooLarge",
-    "InvalidObjectState",
-}
-
+BUCKET_ERRORS = {"BucketAlreadyExists", "InvalidBucketName"}
+UPLOAD_ERRORS = {"EntityTooLarge", "InvalidObjectState"}
 RATE_LIMIT_ERRORS = {
     "SlowDown",
     "Throttling",
@@ -75,23 +62,23 @@ ERROR_CODE_MAP = {
 }
 
 
-def map_s3_exception(e: ClientError):
-    """Map a boto3 ClientError to a custom domain exception based on error code
-    and HTTP status.
-
-    Arguments:
-        e (ClientError): The original exception raised by boto3.
-    Returns:
-        DocumentStorageError: A mapped custom exception that provides
-                              more context about the S3 error.
+def map_s3_exception(e: ClientError) -> DocumentStorageError:
     """
+    Maps a boto3 ClientError to a domain DocumentStorageError based on
+    the error code and HTTP status. Falls back to S3ServiceError for
+    unrecognised errors.
 
+    Args:
+        e: The original ClientError raised by boto3.
+    Returns:
+        A DocumentStorageError subclass instance with context about the failure.
+    """
     error = e.response.get("Error", {})
     error_code = error.get("Code")
     http_status = e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
 
     if error_code in ERROR_CODE_MAP:
-        return ERROR_CODE_MAP[error_code](f"S3 Error: {error_code}")
+        return ERROR_CODE_MAP[error_code](f"S3 error: {error_code}")
 
     if http_status == 404:
         return S3FileNotFoundError("S3 resource not found")
@@ -108,19 +95,13 @@ def map_s3_exception(e: ClientError):
     return S3ServiceError(f"Unhandled S3 error: {error_code or http_status}")
 
 
-def handle_storage_errors(func):
-    """Decorator to wrap storage operations and handle S3 exceptions
-    gracefully."""
+class StorageErrorHandler(BaseErrorHandler):
+    catches = (ClientError, BotoCoreError)
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
+    def handle(self, exc: Exception) -> DocumentStorageError:
+        if isinstance(exc, ClientError):
+            return map_s3_exception(exc)
+        return S3ServiceError(f"Low-level boto3 error: {exc}")
 
-        except ClientError as e:
-            raise map_s3_exception(e) from e
 
-        except BotoCoreError as e:
-            raise S3ServiceError("Low-level boto3 error") from e
-
-    return wrapper
+handle_storage_errors = StorageErrorHandler()

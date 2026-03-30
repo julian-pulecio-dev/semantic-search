@@ -13,3 +13,9 @@ variable "db_password" {
 variable "name" {
   type = string
 }
+
+variable "ecs_desired_count" {
+  type     = number
+  default  = null
+  nullable = true
+}

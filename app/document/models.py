@@ -8,7 +8,7 @@ class Document(models.Model):
     class Status(models.TextChoices):
         PENDING = "PENDING", "PENDING"
         PROCESSING = "PROCESSING", "PROCESSING"
-        READY = "READY", "READY"
+        PROCESSED = "PROCESSED", "PROCESSED"
         FAILED = "FAILED", "FAILED"
         INCOMPLETED = "INCOMPLETED", "INCOMPLETED"
 
@@ -16,7 +16,6 @@ class Document(models.Model):
     document_type = models.ForeignKey(
         DocumentType,
         on_delete=models.PROTECT,
-        null=True,
         related_name="documents",
     )
     s3_key = models.CharField(
