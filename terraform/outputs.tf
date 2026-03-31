@@ -10,6 +10,10 @@ output "migration_task_definition" {
   value = module.ecs_web.migration_task_definition
 }
 
+output "migration_log_group" {
+  value = module.ecs_web.migration_log_group
+}
+
 output "public_subnets" {
   value = module.vpc.subnet_ids
 }
