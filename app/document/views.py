@@ -11,10 +11,11 @@ BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 
 class ListAllDocumentsView(generics.ListAPIView):
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
 
     def get_queryset(self):
-        return Document.objects.select_related("document_type", "user")
+        return Document.objects.all()
 
 
 class ListUserDocumentsView(generics.ListAPIView):
@@ -23,7 +24,7 @@ class ListUserDocumentsView(generics.ListAPIView):
     authentication_classes = [JWTAuthentication]
 
     def get_queryset(self):
-        return self.request.user.documents.select_related("document_type")
+        return Document.objects.all()
 
 
 class RetrieveDocumentView(generics.RetrieveAPIView):
@@ -32,20 +33,15 @@ class RetrieveDocumentView(generics.RetrieveAPIView):
     authentication_classes = [JWTAuthentication]
 
     def get_queryset(self):
-        user = self.request.user
-
-        if user.is_staff:
-            return Document.objects.select_related("document_type", "user")
-
-        return user.documents.select_related("document_type")
+        return Document.objects.all()
 
 
 class DeleteDocumentView(generics.DestroyAPIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAdminUser]
     authentication_classes = [JWTAuthentication]
 
     def get_queryset(self):
-        return self.request.user.documents.select_related("document_type")
+        return Document.objects.all()
 
     def perform_destroy(self, instance):
         s3_loader = S3FileLoaderService(bucket_name=BUCKET_NAME)

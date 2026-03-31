@@ -114,4 +114,8 @@ class S3FileLoaderService:
             ExpiresIn=expiration,
         )
 
-        return response
+        return {
+            **response,
+            "upload_session_id": str(upload_session_id),
+            "document_id": str(document_id),
+        }

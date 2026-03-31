@@ -84,8 +84,8 @@ class TestS3FileLoaderService(unittest.TestCase):
         """Verify that generate_presigned_url_for_upload returns the expected
         presigned URL and fields."""
 
-        expected_response = {"url": "https://s3.url", "fields": {}}
-        self.mock_s3.generate_presigned_post.return_value = expected_response
+        s3_response = {"url": "https://s3.url", "fields": {}}
+        self.mock_s3.generate_presigned_post.return_value = s3_response
 
         user_id = "test-user-id"
         upload_session_id = "test-upload-session-id"
@@ -99,6 +99,11 @@ class TestS3FileLoaderService(unittest.TestCase):
             user_id=user_id,
         )
 
+        expected_response = {
+            **s3_response,
+            "upload_session_id": upload_session_id,
+            "document_id": document_id,
+        }
         self.assertEqual(result, expected_response)
 
         self.mock_s3.generate_presigned_post.assert_called_once()

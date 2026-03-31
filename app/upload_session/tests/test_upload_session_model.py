@@ -7,7 +7,6 @@ from datetime import timedelta
 from unittest.mock import patch
 from upload_session.models import UploadSession
 from document.models import Document
-from document_type.models import DocumentType
 
 User = get_user_model()
 
@@ -17,11 +16,9 @@ class UploadSessionModelTest(TestCase):
         self.user = User.objects.create_user(
             email="testuser@example.com", password="password123"
         )
-        self.document_type = DocumentType.objects.create(name="Invoice")
         self.document = Document.objects.create(
             user=self.user,
             status=Document.Status.PENDING,
-            document_type=self.document_type,
             s3_key="path/to/file.pdf",
         )
         self.session_data = {

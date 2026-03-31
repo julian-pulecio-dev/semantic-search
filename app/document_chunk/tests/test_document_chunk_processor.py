@@ -6,7 +6,6 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from document.models import Document
-from document_type.models import DocumentType
 from document_chunk.models import DocumentChunk
 from document_chunk.services.document_chunk_processor import (
     Chunk,
@@ -46,11 +45,9 @@ class TestDocumentChunkProcessorInit(TestCase):
         self.user = User.objects.create_user(
             email="test@example.com", password="testpassword"
         )
-        self.document_type = DocumentType.objects.create(name="Report")
         self.document = Document.objects.create(
             user=self.user,
             status=Document.Status.PENDING,
-            document_type=self.document_type,
             s3_key="docs/test.pdf",
         )
 
@@ -87,11 +84,9 @@ class TestDocumentChunkProcessorMethods(TestCase):
         self.user = User.objects.create_user(
             email="test@example.com", password="testpassword"
         )
-        self.document_type = DocumentType.objects.create(name="Report")
         self.document = Document.objects.create(
             user=self.user,
             status=Document.Status.PENDING,
-            document_type=self.document_type,
             s3_key="docs/test.pdf",
         )
         self.mock_pdf_extractor = MagicMock()

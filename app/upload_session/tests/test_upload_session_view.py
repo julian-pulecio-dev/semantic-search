@@ -6,7 +6,6 @@ from rest_framework import status
 from unittest.mock import patch
 from upload_session.models import UploadSession
 from document.models import Document
-from document_type.models import DocumentType
 
 User = get_user_model()
 
@@ -15,16 +14,18 @@ CREATE_UPLOAD_SESSION_URL = reverse("upload_session:create")
 
 class CreateUploadSessionViewTest(APITestCase):
     def setUp(self):
-        self.user = User.objects.create_user(
+        self.admin_user = User.objects.create_superuser(
+            email="admin@example.com", password="adminpassword"
+        )
+        self.regular_user = User.objects.create_user(
             email="testuser@example.com", password="password123"
         )
         self.client = APIClient()
-        self.client.force_authenticate(user=self.user)
         self.url = CREATE_UPLOAD_SESSION_URL
 
-        self.document_type = DocumentType.objects.create(name="Invoice")
-
         self.mock_response_data = {
+            "session_id": "some-session-uuid",
+            "upload_session_id": "some-session-uuid",
             "document_id": "some-uuid",
             "url": {
                 "url": "https://s3-presigned-url.com",
@@ -38,54 +39,37 @@ class CreateUploadSessionViewTest(APITestCase):
             "expires_at": "2024-01-01T00:00:00Z",
         }
 
-    @patch("upload_session.views.DocumentUploadService.create_upload_request")
+    @patch("upload_session.views.UploadSessionService.create_upload_session")
     def test_create_upload_session_success(self, mock_service):
-        """Verify that a POST request with a valid document_type_id returns
-        the expected response with a presigned URL and document ID."""
+        """Verify that a POST request from an admin returns the expected
+        response with a presigned URL, session ID, and document ID."""
 
         mock_service.return_value = self.mock_response_data
+        self.client.force_authenticate(user=self.admin_user)
 
-        response = self.client.post(
-            self.url,
-            {"document_type_id": self.document_type.id},
-            format="json",
-        )
+        response = self.client.post(self.url, {}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["session_id"], "some-session-uuid")
         self.assertEqual(response.data["document_id"], "some-uuid")
         self.assertEqual(response.data["url"], self.mock_response_data["url"])
         self.assertEqual(response.data["status"], "PENDING")
         self.assertEqual(response.data["expires_at"], "2024-01-01T00:00:00Z")
         mock_service.assert_called_once()
 
-    def test_missing_document_type_id_returns_400(self):
-        """Verify that a POST request without document_type_id returns 400."""
+    def test_non_admin_request_returns_403(self):
+        """Verify that a POST request from a non-admin user returns 403."""
 
+        self.client.force_authenticate(user=self.regular_user)
         response = self.client.post(self.url, {}, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("document_type_id", response.data)
-
-    def test_invalid_document_type_id_returns_400(self):
-        """Verify that a POST request with a non-existent document_type_id
-        returns 400."""
-
-        response = self.client.post(
-            self.url, {"document_type_id": str(uuid.uuid4())}, format="json"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("document_type_id", response.data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_unauthenticated_request(self):
         """Verify that a POST request without authentication returns 401."""
 
         self.client.force_authenticate(user=None)
-        response = self.client.post(
-            self.url,
-            {"document_type_id": str(self.document_type.id)},
-            format="json",
-        )
+        response = self.client.post(self.url, {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
@@ -100,12 +84,9 @@ class UploadSessionDetailViewTest(APITestCase):
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
-        self.document_type = DocumentType.objects.create(name="Contract")
-
         self.document = Document.objects.create(
             user=self.user,
             status=Document.Status.PENDING,
-            document_type=self.document_type,
             s3_key="docs/file.pdf",
         )
         self.session = UploadSession.objects.create(
@@ -137,15 +118,11 @@ class UploadSessionDetailViewTest(APITestCase):
         self.assertEqual(str(document_data["id"]), str(self.document.id))
         self.assertEqual(document_data["status"], Document.Status.PENDING)
         self.assertEqual(document_data["s3_key"], "docs/file.pdf")
-        self.assertEqual(
-            str(document_data["document_type"]), str(self.document_type.id)
-        )
 
     def test_returns_404_for_other_users_session(self):
         other_document = Document.objects.create(
             user=self.other_user,
             status=Document.Status.PENDING,
-            document_type=self.document_type,
             s3_key="docs/other.pdf",
         )
         other_session = UploadSession.objects.create(

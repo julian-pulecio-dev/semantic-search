@@ -2,7 +2,6 @@ from unittest import mock
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from document.models import Document
-from document_type.models import DocumentType
 from upload_session.models import UploadSession
 from upload_session.services.upload_session_service import UploadSessionService
 
@@ -14,18 +13,16 @@ class UploadSessionServiceTest(TestCase):
         self.user = User.objects.create_user(
             email="testuser@example.com", password="password123"
         )
-        self.document_type = DocumentType.objects.create(name="Invoice")
         self.mock_storage = mock.MagicMock()
         self.service = UploadSessionService(
             user=self.user, storage=self.mock_storage
         )
 
     def _create_document(self):
-        """Helper that creates a Document with the required document_type."""
+        """Helper that creates a Document."""
         return Document.objects.create(
             user=self.user,
             status=Document.Status.PENDING,
-            document_type=self.document_type,
         )
 
     def test_create_upload_session_success(self):

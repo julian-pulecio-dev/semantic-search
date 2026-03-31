@@ -27,15 +27,16 @@ class DocumentChunkingHandler(Handler):
         Raises:
             DocumentProcessingError: If processing fails at any step.
         """
-
         body = json.loads(message["Body"])
 
-        self.logger.info(f"Received message for {body}")
+        try:
+            document_key = body["detail"]["object"]["key"]
+        except KeyError as e:
+            raise DocumentProcessingError(
+                f"Malformed message, missing field: {e}"
+            ) from e
 
-        document_key = body["detail"]["object"]["key"]
-
-        self.logger.info(f"Starting chunking for document={document_key}")
-
+        self.logger.info(f"Received message for document={document_key}")
         self.chunk_document(document_key)
 
     def chunk_document(self, document_key: str) -> None:
@@ -48,6 +49,12 @@ class DocumentChunkingHandler(Handler):
         """
         try:
             document = Document.objects.get(s3_key=document_key)
+        except Document.DoesNotExist:
+            raise DocumentProcessingError(
+                f"Document with key {document_key} not found in database"
+            )
+
+        try:
             processor = DocumentChunkProcessor(document)
             processor.process()
         except DocumentProcessingError as e:
@@ -71,8 +78,9 @@ class DocumentChunkingHandler(Handler):
             message: The SQS message dict.
             exception: The exception that was raised.
         """
+        message_id = message.get("MessageId", "unknown")
         self.logger.error(
-            "Document processing failed",
+            f"Document processing failed for message={message_id}",
             exc_info=exception,
         )
 

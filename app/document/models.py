@@ -1,7 +1,6 @@
 import uuid
 from django.db import models
 from user.models import User
-from document_type.models import DocumentType
 
 
 class Document(models.Model):
@@ -13,10 +12,12 @@ class Document(models.Model):
         INCOMPLETED = "INCOMPLETED", "INCOMPLETED"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    document_type = models.ForeignKey(
-        DocumentType,
-        on_delete=models.PROTECT,
-        related_name="documents",
+    document = models.OneToOneField(
+        "document.Document",
+        on_delete=models.CASCADE,
+        related_name="upload_session",
+        null=True,
+        blank=True,
     )
     s3_key = models.CharField(
         max_length=255, unique=True, null=True, blank=True, editable=False

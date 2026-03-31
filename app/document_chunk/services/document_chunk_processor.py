@@ -119,12 +119,6 @@ class DocumentChunkProcessor:
             DocumentInvalidStatusError: If the document is not in CREATED status.
             DocumentPersistenceError: If saving chunks or updating status fails.
         """
-        if self.document.status != Document.Status.CREATED:
-            raise DocumentInvalidStatusError(
-                f"Document {self.document.id} cannot be processed: "
-                f"expected status CREATED, got {self.document.status!r}."
-            )
-
         logger.info("Processing document %s", self.document.id)
 
         pages = self.pdf_extractor.extract(

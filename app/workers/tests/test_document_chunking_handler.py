@@ -47,7 +47,7 @@ class TestDocumentChunkingHandlerHandle(SimpleTestCase):
     def test_handle_raises_on_missing_detail_key(self):
         message = _make_sqs_message({"unexpected": "shape"})
 
-        with self.assertRaises(KeyError):
+        with self.assertRaises(DocumentProcessingError):
             self.handler.handle(message)
 
     def test_handle_propagates_document_processing_error(self):

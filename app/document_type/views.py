@@ -6,7 +6,7 @@ from document_type.serializers import DocumentTypeSerializer
 
 class ListAllDocumentTypesView(generics.ListAPIView):
     serializer_class = DocumentTypeSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return DocumentType.objects.all()
