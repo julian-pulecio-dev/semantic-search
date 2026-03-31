@@ -53,7 +53,6 @@ jobs:
             echo "CLUSTER=$(terraform output -raw ecs_cluster_name || exit 1)" >> $GITHUB_OUTPUT
             echo "SERVICE=$(terraform output -raw ecs_service_name || exit 1)" >> $GITHUB_OUTPUT
             echo "MIGRATION_TASK=$(terraform output -raw migration_task_definition || exit 1)" >> $GITHUB_OUTPUT
-            echo "MIGRATION_LOG_GROUP=$(terraform output -raw migration_log_group || exit 1)" >> $GITHUB_OUTPUT
             echo "SUBNETS=$(terraform output -json public_subnets || exit 1)" >> $GITHUB_OUTPUT
             echo "SG=$(terraform output -raw ecs_security_group || exit 1)" >> $GITHUB_OUTPUT
 
@@ -93,8 +92,13 @@ jobs:
             if [ "$EXIT_CODE" != "0" ]; then
               echo "Migration failed — fetching logs"
 
-              aws logs tail ${{ steps.tf.outputs.MIGRATION_LOG_GROUP }} \
-                --since 10m || true
+              TASK_FAMILY=$(echo "${{ steps.tf.outputs.MIGRATION_TASK }}" | sed 's|.*/task-definition/||' | sed 's|:[0-9]*$||')
+              LOG_GROUP="/ecs/$TASK_FAMILY"
+
+              aws logs filter-log-events \
+                --log-group-name "$LOG_GROUP" \
+                --start-time $(( $(date +%s) * 1000 - 600000 )) \
+                --output text || true
 
               exit 1
             fi
