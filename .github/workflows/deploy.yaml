@@ -77,7 +77,20 @@ jobs:
           # Derive identifiers right after we have the ARN
           TASK_ID=$(basename "$TASK_ARN")
           TASK_FAMILY=$(echo "${{ steps.tf.outputs.MIGRATION_TASK }}" | sed 's|.*task-definition/||' | sed 's|:[0-9]*$||')
-          LOG_GROUP="/ecs/$TASK_FAMILY"
+
+          # Read log config from the actual task definition — avoids guessing
+          TASK_DEF_JSON=$(aws ecs describe-task-definition \
+            --task-definition "${{ steps.tf.outputs.MIGRATION_TASK }}" \
+            --query 'taskDefinition.containerDefinitions[0].logConfiguration.options' \
+            --output json)
+
+          LOG_GROUP=$(echo "$TASK_DEF_JSON" | jq -r '.["awslogs-group"]')
+          LOG_PREFIX=$(echo "$TASK_DEF_JSON" | jq -r '.["awslogs-stream-prefix"]')
+          CONTAINER_NAME=$(aws ecs describe-task-definition \
+            --task-definition "${{ steps.tf.outputs.MIGRATION_TASK }}" \
+            --query 'taskDefinition.containerDefinitions[0].name' \
+            --output text)
+          LOG_STREAM="${LOG_PREFIX}/${CONTAINER_NAME}/${TASK_ID}"
 
           # Wait until finished
           aws ecs wait tasks-stopped \
@@ -98,7 +111,7 @@ jobs:
 
             aws logs filter-log-events \
               --log-group-name "$LOG_GROUP" \
-              --log-stream-names "ecs/$TASK_FAMILY/$TASK_ID" \
+              --log-stream-names "$LOG_STREAM" \
               --start-time $(( $(date +%s) * 1000 - 600000 )) \
               --limit 100 \
               --output text || true
