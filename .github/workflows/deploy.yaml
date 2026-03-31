@@ -61,23 +61,42 @@ jobs:
       - name: Run migration task
         id: migrate
         run: |
+            set -e
+
             SUBNETS=$(echo '${{ steps.tf.outputs.SUBNETS }}' | jq -r '. | join(",")')
 
             TASK_ARN=$(aws ecs run-task \
-            --cluster ${{ steps.tf.outputs.CLUSTER }} \
-            --task-definition ${{ steps.tf.outputs.MIGRATION_TASK }} \
-            --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[${{ steps.tf.outputs.SG }}],assignPublicIp=ENABLED}" \
-            --query 'tasks[0].taskArn' \
-            --output text)
+              --cluster ${{ steps.tf.outputs.CLUSTER }} \
+              --task-definition ${{ steps.tf.outputs.MIGRATION_TASK }} \
+              --launch-type FARGATE \
+              --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[${{ steps.tf.outputs.SG }}],assignPublicIp=ENABLED}" \
+              --query 'tasks[0].taskArn' \
+              --output text)
 
             echo "Started migration task: $TASK_ARN"
 
-            echo "TASK_ARN=$TASK_ARN" >> $GITHUB_OUTPUT
-
+            # Wait until finished
             aws ecs wait tasks-stopped \
-            --cluster ${{ steps.tf.outputs.CLUSTER }} \
-            --tasks $TASK_ARN
+              --cluster ${{ steps.tf.outputs.CLUSTER }} \
+              --tasks "$TASK_ARN"
+
+            # Get exit code IMMEDIATELY
+            EXIT_CODE=$(aws ecs describe-tasks \
+              --cluster ${{ steps.tf.outputs.CLUSTER }} \
+              --tasks "$TASK_ARN" \
+              --query 'tasks[0].containers[0].exitCode' \
+              --output text)
+
+            echo "EXIT_CODE=$EXIT_CODE"
+
+            if [ "$EXIT_CODE" != "0" ]; then
+              echo "Migration failed — fetching logs"
+
+              aws logs tail /ecs/semantic-search \
+                --since 10m || true
+
+              exit 1
+            fi
 
 
       # ---------- CHECK RESULT ----------
