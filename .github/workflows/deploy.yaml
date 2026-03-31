@@ -38,7 +38,7 @@ jobs:
           IMAGE=${{ secrets.DOCKERHUB_USER }}/semantic-search:latest
           docker build -t $IMAGE .
           docker push $IMAGE
-    
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -50,58 +50,61 @@ jobs:
         id: tf
         working-directory: terraform
         run: |
-            echo "CLUSTER=$(terraform output -raw ecs_cluster_name || exit 1)" >> $GITHUB_OUTPUT
-            echo "SERVICE=$(terraform output -raw ecs_service_name || exit 1)" >> $GITHUB_OUTPUT
-            echo "MIGRATION_TASK=$(terraform output -raw migration_task_definition || exit 1)" >> $GITHUB_OUTPUT
-            echo "SUBNETS=$(terraform output -json public_subnets || exit 1)" >> $GITHUB_OUTPUT
-            echo "SG=$(terraform output -raw ecs_security_group || exit 1)" >> $GITHUB_OUTPUT
-
+          echo "CLUSTER=$(terraform output -raw ecs_cluster_name || exit 1)" >> $GITHUB_OUTPUT
+          echo "SERVICE=$(terraform output -raw ecs_service_name || exit 1)" >> $GITHUB_OUTPUT
+          echo "MIGRATION_TASK=$(terraform output -raw migration_task_definition || exit 1)" >> $GITHUB_OUTPUT
+          echo "SUBNETS=$(terraform output -json public_subnets || exit 1)" >> $GITHUB_OUTPUT
+          echo "SG=$(terraform output -raw ecs_security_group || exit 1)" >> $GITHUB_OUTPUT
 
       # ---------- RUN MIGRATIONS ----------
       - name: Run migration task
         id: migrate
         run: |
-            set -e
+          set -e
 
-            SUBNETS=$(echo '${{ steps.tf.outputs.SUBNETS }}' | jq -r '. | join(",")')
+          SUBNETS=$(echo '${{ steps.tf.outputs.SUBNETS }}' | jq -r '. | join(",")')
 
-            TASK_ARN=$(aws ecs run-task \
-              --cluster ${{ steps.tf.outputs.CLUSTER }} \
-              --task-definition ${{ steps.tf.outputs.MIGRATION_TASK }} \
-              --launch-type FARGATE \
-              --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[${{ steps.tf.outputs.SG }}],assignPublicIp=ENABLED}" \
-              --query 'tasks[0].taskArn' \
-              --output text)
+          TASK_ARN=$(aws ecs run-task \
+            --cluster ${{ steps.tf.outputs.CLUSTER }} \
+            --task-definition ${{ steps.tf.outputs.MIGRATION_TASK }} \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNETS],securityGroups=[${{ steps.tf.outputs.SG }}],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
 
-            echo "Started migration task: $TASK_ARN"
+          echo "Started migration task: $TASK_ARN"
 
-            # Wait until finished
-            aws ecs wait tasks-stopped \
-              --cluster ${{ steps.tf.outputs.CLUSTER }} \
-              --tasks "$TASK_ARN"
+          # Derive identifiers right after we have the ARN
+          TASK_ID=$(basename "$TASK_ARN")
+          TASK_FAMILY=$(echo "${{ steps.tf.outputs.MIGRATION_TASK }}" | sed 's|.*task-definition/||' | sed 's|:[0-9]*$||')
+          LOG_GROUP="/ecs/$TASK_FAMILY"
 
-            # Get exit code IMMEDIATELY
-            EXIT_CODE=$(aws ecs describe-tasks \
-              --cluster ${{ steps.tf.outputs.CLUSTER }} \
-              --tasks "$TASK_ARN" \
-              --query 'tasks[0].containers[0].exitCode' \
-              --output text)
+          # Wait until finished
+          aws ecs wait tasks-stopped \
+            --cluster ${{ steps.tf.outputs.CLUSTER }} \
+            --tasks "$TASK_ARN"
 
-            echo "EXIT_CODE=$EXIT_CODE"
+          # Get exit code
+          EXIT_CODE=$(aws ecs describe-tasks \
+            --cluster ${{ steps.tf.outputs.CLUSTER }} \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[0].exitCode' \
+            --output text)
 
-            if [ "$EXIT_CODE" != "0" ]; then
-              echo "Migration failed — fetching logs"
+          echo "EXIT_CODE=$EXIT_CODE"
 
-              TASK_FAMILY=$(echo "${{ steps.tf.outputs.MIGRATION_TASK }}" | sed 's|.*/task-definition/||' | sed 's|:[0-9]*$||')
-              LOG_GROUP="/ecs/$TASK_FAMILY"
+          if [ "$EXIT_CODE" != "0" ]; then
+            echo "Migration failed — fetching logs"
 
-              aws logs filter-log-events \
-                --log-group-name "$LOG_GROUP" \
-                --start-time $(( $(date +%s) * 1000 - 600000 )) \
-                --output text || true
+            aws logs filter-log-events \
+              --log-group-name "$LOG_GROUP" \
+              --log-stream-names "ecs/$TASK_FAMILY/$TASK_ID" \
+              --start-time $(( $(date +%s) * 1000 - 600000 )) \
+              --limit 100 \
+              --output text || true
 
-              exit 1
-            fi
+            exit 1
+          fi
 
       # ---------- DEPLOY SERVICE ----------
       - name: Update ECS service
