@@ -9,7 +9,6 @@ from document.models import Document
 User = get_user_model()
 
 LIST_ALL_URL = reverse("document:list_all")
-LIST_USER_URL = reverse("document:list_user")
 
 
 def RETRIEVE_URL(pk):
@@ -60,14 +59,6 @@ class DocumentViewsTestCase(APITestCase):
 
         response = self.client.get(LIST_ALL_URL)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_list_user_documents_returns_all(self):
-        """Validate that list_user returns all documents (no ownership filter)."""
-
-        self.client.force_authenticate(user=self.regular_user)
-        response = self.client.get(LIST_USER_URL)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 2)
 
     def test_retrieve_document_any_authenticated_user(self):
         """Validate that any authenticated user can retrieve any document."""

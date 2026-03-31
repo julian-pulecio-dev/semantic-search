@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class PDFTextExtractor:
     """
     Responsible for fetching a PDF from S3 and converting it to a list
-    of page dicts with extracted text.
+    of page dicts with extracted text and word-level coordinates.
 
     Handles single-column and two-column layouts transparently. All PDF
     parsing logic is isolated here so it can be tested independently of
@@ -37,12 +37,17 @@ class PDFTextExtractor:
     def extract(self, bucket: str, key: str) -> List[dict]:
         """
         Fetches the PDF at s3://bucket/key and returns a list of page dicts.
+
         Args:
             bucket: The S3 bucket name.
             key: The S3 key for the document.
         Returns:
-            A list of dicts, each containing 'page_number' and 'text' keys,
-            in page order. Pages with no extractable text are omitted.
+            A list of dicts, each containing:
+              - 'page_number': 1-based page index.
+              - 'text': extracted text for the page.
+              - 'words': list of word dicts with keys 'text', 'x0', 'x1',
+                         'top', 'bottom' representing each word's bounding box.
+            Pages with no extractable text are omitted.
         Raises:
             DocumentProcessingError: If the file cannot be fetched or parsed.
         """
@@ -52,6 +57,7 @@ class PDFTextExtractor:
     def _get_s3_file(self, bucket: str, key: str) -> BytesIO:
         """
         Fetches the file from S3 and returns a BytesIO stream.
+
         Args:
             bucket: The S3 bucket name.
             key: The S3 key for the document.
@@ -70,11 +76,13 @@ class PDFTextExtractor:
 
     def _pdf_to_text(self, file_stream: BytesIO) -> List[dict]:
         """
-        Converts a PDF file stream to a list of page dicts with page number and text.
+        Converts a PDF file stream to a list of page dicts with page number,
+        text, and word-level bounding box coordinates.
+
         Args:
             file_stream: A BytesIO stream of the PDF file.
         Returns:
-            A list of dicts, each containing 'page_number' and 'text' keys.
+            A list of dicts, each containing 'page_number', 'text', and 'words'.
         Raises:
             DocumentProcessingError: If the PDF cannot be parsed.
         """
@@ -83,14 +91,20 @@ class PDFTextExtractor:
 
             with pdfplumber.open(file_stream) as pdf:
                 for page_number, page in enumerate(pdf.pages, start=1):
-                    text = self._extract_page_text(page)
+                    result = self._extract_page_text(page)
 
-                    if text:
+                    if result["text"]:
                         pages_output.append(
                             {
                                 "page_number": page_number,
-                                "text": text.strip(),
+                                "text": result["text"].strip(),
+                                "words": result["words"],
                             }
+                        )
+                    else:
+                        logger.debug(
+                            "Page %d has no extractable text, skipping",
+                            page_number,
                         )
 
             logger.debug("Extracted %d pages from PDF", len(pages_output))
@@ -101,24 +115,30 @@ class PDFTextExtractor:
         except Exception as e:
             raise DocumentProcessingError(f"Failed to parse PDF: {e}") from e
 
-    def _extract_page_text(self, page) -> str:
+    def _extract_page_text(self, page) -> dict:
         """
-        Extracts text from a PDF page, with special handling for two-column layouts.
+        Extracts text and words from a PDF page, with special handling
+        for two-column layouts.
+
         Args:
             page: A pdfplumber page object.
         Returns:
-            The extracted text from the page.
+            A dict with:
+              - 'text': the extracted text string (empty string if none).
+              - 'words': list of word dicts from pdfplumber (empty list if none).
         """
         simple_text = page.extract_text()
         if not simple_text:
-            return ""
+            return {"text": "", "words": []}
 
         words = page.extract_words()
 
         if words and self._is_two_column_layout(page, words):
-            return self._extract_two_columns(page, words)
+            text = self._extract_two_columns(page, words)
+        else:
+            text = simple_text
 
-        return simple_text
+        return {"text": text, "words": words}
 
     def _is_two_column_layout(self, page, words) -> bool:
         """
@@ -131,6 +151,7 @@ class PDFTextExtractor:
         All x-coordinates are normalised to [0, 1] relative to page width
         before comparison, so detection is consistent regardless of the
         physical dimensions of the PDF.
+
         Args:
             page: A pdfplumber page object.
             words: A list of word dicts extracted from the page.
@@ -162,6 +183,7 @@ class PDFTextExtractor:
         Extracts text from a two-column page by splitting words into left
         and right groups, grouping them into lines, and concatenating the
         lines in reading order (left column first, then right).
+
         Args:
             page: A pdfplumber page object.
             words: A list of word dicts extracted from the page.
@@ -186,6 +208,7 @@ class PDFTextExtractor:
         Each word's `top` coordinate is quantised to the nearest multiple of
         `line_tolerance`, so all words on the same visual line map to the same
         bucket key. This makes grouping O(n) instead of O(n²).
+
         Args:
             words: A list of word dicts extracted from the page.
         Returns:
@@ -208,6 +231,7 @@ class PDFTextExtractor:
     def _lines_to_text(self, lines: dict) -> List[str]:
         """
         Converts a dictionary of lines into a list of text strings.
+
         Args:
             lines: A dictionary mapping line tops to lists of words in that line.
         Returns:

@@ -10,6 +10,7 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
             "document",
             "content",
             "chunk_index",
+            "bounding_polygons",
             "created_at",
             "embedding",
         ]

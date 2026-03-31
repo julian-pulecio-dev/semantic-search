@@ -108,7 +108,7 @@ class TestDocumentChunkProcessorMethods(TestCase):
         self.mock_splitter.split_text.return_value = ["chunk 1", "chunk 2"]
 
         chunks = processor._text_to_chunks(
-            [{"page_number": 3, "text": "some text"}]
+            [{"page_number": 3, "text": "some text", "words": []}]
         )
 
         self.assertEqual(len(chunks), 2)
@@ -121,7 +121,7 @@ class TestDocumentChunkProcessorMethods(TestCase):
         self.mock_splitter.split_text.return_value = ["text"]
 
         chunks = processor._text_to_chunks(
-            [{"page_number": 1, "text": "text"}]
+            [{"page_number": 1, "text": "text", "words": []}]
         )
 
         self.assertEqual(chunks[0].document_id, self.document.id)
@@ -134,8 +134,8 @@ class TestDocumentChunkProcessorMethods(TestCase):
         ]
 
         pages = [
-            {"page_number": 1, "text": "page one"},
-            {"page_number": 2, "text": "page two"},
+            {"page_number": 1, "text": "page one", "words": []},
+            {"page_number": 2, "text": "page two", "words": []},
         ]
         chunks = processor._text_to_chunks(pages)
 

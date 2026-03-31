@@ -18,15 +18,6 @@ class ListAllDocumentsView(generics.ListAPIView):
         return Document.objects.all()
 
 
-class ListUserDocumentsView(generics.ListAPIView):
-    serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication]
-
-    def get_queryset(self):
-        return Document.objects.all()
-
-
 class RetrieveDocumentView(generics.RetrieveAPIView):
     serializer_class = DocumentSerializer
     permission_classes = [permissions.IsAuthenticated]

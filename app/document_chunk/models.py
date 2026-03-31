@@ -31,6 +31,11 @@ class DocumentChunk(models.Model):
         validators=[MinValueValidator(0)]
     )
 
+    bounding_polygons = models.JSONField(
+        null=True,
+        blank=True,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

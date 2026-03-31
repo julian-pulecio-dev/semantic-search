@@ -18,6 +18,7 @@ from document_chunk.services.exceptions.document_chunk_exceptions import (
     handle_persistence_errors,
 )
 from document_chunk.services.pdf_text_extractor import PDFTextExtractor
+from document_chunk.services.chunk_bounding_polygon import ChunkBoundingPolygon
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,9 @@ class Chunk:
     page_number: int
     document_id: int
     embedding: Optional[list] = field(default=None, hash=False, compare=False)
+    bounding_polygons: Optional[list] = field(
+        default=None, hash=False, compare=False
+    )
 
     def with_embedding(self, embedding: list) -> "Chunk":
         """
@@ -56,6 +60,7 @@ class Chunk:
             page_number=self.page_number,
             document_id=self.document_id,
             embedding=embedding,
+            bounding_polygons=self.bounding_polygons,
         )
 
 
@@ -85,6 +90,9 @@ class DocumentChunkProcessor:
     pdf_extractor: Optional[PDFTextExtractor] = field(default=None)
     embedding_processor: Optional[EmbeddingsProcessor] = field(default=None)
     splitter: Optional[RecursiveCharacterTextSplitter] = field(default=None)
+    bounding_polygon_resolver: Optional[ChunkBoundingPolygon] = field(
+        default=None
+    )
     embedding_batch_size: int = field(default=EMBEDDING_BATCH_SIZE)
 
     def __post_init__(self):
@@ -103,6 +111,9 @@ class DocumentChunkProcessor:
                     separators=["\n\n", "\n", ". ", " ", ""],
                 )
             )
+
+        if self.bounding_polygon_resolver is None:
+            self.bounding_polygon_resolver = ChunkBoundingPolygon()
 
         self._update_document_status(Document.Status.PROCESSING)
 
@@ -171,11 +182,21 @@ class DocumentChunkProcessor:
 
         for page in pages_data:
             for text in self.splitter.split_text(page["text"]):
+                polygons = self.bounding_polygon_resolver.resolve(
+                    text, pages_data
+                )
                 chunks.append(
                     Chunk(
                         content=text,
                         page_number=page["page_number"],
                         document_id=self.document.id,
+                        bounding_polygons=[
+                            {
+                                "page_number": p.page_number,
+                                "points": [list(pt) for pt in p.points],
+                            }
+                            for p in polygons
+                        ],
                     )
                 )
 
@@ -255,6 +276,7 @@ class DocumentChunkProcessor:
                     content=chunk.content,
                     embedding=chunk.embedding,
                     chunk_index=index,
+                    bounding_polygons=chunk.bounding_polygons,
                 )
                 for index, chunk in enumerate(chunks)
             ]

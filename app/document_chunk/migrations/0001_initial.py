@@ -39,7 +39,9 @@ class Migration(migrations.Migration):
                 (
                     "chunk_index",
                     models.PositiveIntegerField(
-                        validators=[django.core.validators.MinValueValidator(0)]
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ]
                     ),
                 ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
@@ -76,7 +78,8 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="documentchunk",
             constraint=models.UniqueConstraint(
-                fields=("document", "chunk_index"), name="unique_chunk_per_document"
+                fields=("document", "chunk_index"),
+                name="unique_chunk_per_document",
             ),
         ),
     ]
