@@ -11,6 +11,7 @@ services:
       DB_PASSWORD: postgres
       DB_HOST: semantic-search-db
       DB_PORT: 5432
+      S3_BUCKET_NAME: semantic-search-bucket-test
     volumes:
       - ./app:/app
     depends_on:
