@@ -57,8 +57,11 @@ class UploadSessionServiceTest(TestCase):
         self.assertEqual(result["url"]["url"], "https://s3.amazon.com/bucket")
         self.assertEqual(result["url"]["fields"]["key"], fake_s3_key)
 
+        document = Document.objects.first()
+        session = UploadSession.objects.first()
         self.mock_storage.generate_presigned_url_for_upload.assert_called_once_with(
-            upload_session_id=UploadSession.objects.first().id,
+            upload_session_id=session.id,
+            document_id=document.id,
             key=fake_s3_key,
             user_id=self.user.id,
         )

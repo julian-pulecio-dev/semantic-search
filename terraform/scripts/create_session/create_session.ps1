@@ -6,53 +6,53 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== 1. Buscando clusters disponibles ===" -ForegroundColor Cyan
+Write-Host "=== 1. Looking for available clusters ===" -ForegroundColor Cyan
 $Clusters = aws ecs list-clusters --query "clusterArns[*]" --output text
 $ClusterList = $Clusters -split "\t"
 
 if ($ClusterList.Count -eq 0) {
-  Write-Host "No se encontraron clusters ECS" -ForegroundColor Red
+  Write-Host "No ECS clusters found" -ForegroundColor Red
   exit 1
 }
 
 if ($ClusterList.Count -eq 1) {
   $ClusterArn = $ClusterList[0]
 } else {
-  Write-Host "Clusters disponibles:"
+  Write-Host "Available clusters:"
   for ($i = 0; $i -lt $ClusterList.Count; $i++) {
     Write-Host "  [$i] $($ClusterList[$i])"
   }
-  $Selection = Read-Host "Selecciona el numero del cluster"
+  $Selection = Read-Host "Select the cluster number"
   $ClusterArn = $ClusterList[$Selection]
 }
 
 $ClusterName = $ClusterArn -replace ".*/" , ""
-Write-Host "Cluster seleccionado: $ClusterName" -ForegroundColor Green
+Write-Host "Selected cluster: $ClusterName" -ForegroundColor Green
 
-Write-Host "=== 2. Buscando servicios en el cluster ===" -ForegroundColor Cyan
+Write-Host "=== 2. Looking for services in the cluster ===" -ForegroundColor Cyan
 $Services = aws ecs list-services --cluster $ClusterName --query "serviceArns[*]" --output text
 $ServiceList = $Services -split "\t"
 
 if ($ServiceList.Count -eq 0) {
-  Write-Host "No se encontraron servicios en el cluster $ClusterName" -ForegroundColor Red
+  Write-Host "No services found in cluster $ClusterName" -ForegroundColor Red
   exit 1
 }
 
 if ($ServiceList.Count -eq 1) {
   $ServiceArn = $ServiceList[0]
 } else {
-  Write-Host "Servicios disponibles:"
+  Write-Host "Available services:"
   for ($i = 0; $i -lt $ServiceList.Count; $i++) {
     Write-Host "  [$i] $($ServiceList[$i])"
   }
-  $Selection = Read-Host "Selecciona el numero del servicio"
+  $Selection = Read-Host "Select the service number"
   $ServiceArn = $ServiceList[$Selection]
 }
 
 $ServiceName = $ServiceArn -replace ".*/" , ""
-Write-Host "Servicio seleccionado: $ServiceName" -ForegroundColor Green
+Write-Host "Selected service: $ServiceName" -ForegroundColor Green
 
-Write-Host "=== 3. Obteniendo tarea activa del servicio ===" -ForegroundColor Cyan
+Write-Host "=== 3. Getting active task for the service ===" -ForegroundColor Cyan
 $TaskArn = aws ecs list-tasks `
   --cluster $ClusterName `
   --service-name $ServiceName `
@@ -60,13 +60,13 @@ $TaskArn = aws ecs list-tasks `
   --output text
 
 if ($TaskArn -eq "None" -or -not $TaskArn) {
-  Write-Host "No hay tareas activas en el servicio $ServiceName" -ForegroundColor Red
+  Write-Host "No active tasks in service $ServiceName" -ForegroundColor Red
   exit 1
 }
 
-Write-Host "Tarea encontrada: $TaskArn" -ForegroundColor Green
+Write-Host "Task found: $TaskArn" -ForegroundColor Green
 
-Write-Host "=== 4. Conectando al contenedor ===" -ForegroundColor Cyan
+Write-Host "=== 4. Connecting to the container ===" -ForegroundColor Cyan
 aws ecs execute-command `
   --cluster $ClusterName `
   --task $TaskArn `

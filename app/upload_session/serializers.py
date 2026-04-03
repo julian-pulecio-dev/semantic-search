@@ -3,6 +3,10 @@ from upload_session.models import UploadSession
 from document.models import Document
 
 
+class CreateUploadSessionSerializer(serializers.Serializer):
+    document_type = serializers.CharField(max_length=100)
+
+
 class UploadSessionSerializer(serializers.Serializer):
     session_id = serializers.UUIDField(
         source="upload_session_id", read_only=True

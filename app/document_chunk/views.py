@@ -7,9 +7,11 @@ from drf_spectacular.utils import extend_schema
 from document_chunk.models import DocumentChunk
 from document_chunk.serializers import (
     DocumentChunkSerializer,
+    ChunkRefreshSerializer,
     SemanticSearchSerializer,
 )
 from document_chunk.services.embeddings_processor import EmbeddingsProcessor
+from document_chunk.services.chunk_refresh_service import ChunkRefreshService
 
 
 class DocumentChunkListView(generics.ListAPIView):
@@ -33,6 +35,30 @@ class DocumentChunkDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return DocumentChunk.objects.filter(document__user=self.request.user)
+
+
+class ChunkRefreshView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=ChunkRefreshSerializer,
+        responses={200: DocumentChunkSerializer},
+    )
+    def patch(self, request, id):
+        chunk = generics.get_object_or_404(DocumentChunk, id=id)
+
+        serializer = ChunkRefreshSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        chunk = ChunkRefreshService().refresh(
+            chunk=chunk,
+            bounding_polygons=serializer.validated_data["bounding_polygons"],
+        )
+
+        return Response(
+            DocumentChunkSerializer(chunk).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class SemanticSearchView(APIView):

@@ -1,6 +1,6 @@
 resource "aws_cloudwatch_log_group" "ecs_app" {
   name              = "/ecs/${var.name}"
-  retention_in_days = 14   # guarda los logs por 14 días (ajusta según necesidad)
+  retention_in_days = 14   # retains logs for 14 days (adjust as needed)
 }
 
 resource "aws_iam_role" "ecs_task" {

@@ -27,6 +27,7 @@ class UploadSessionService:
 
             url = self.storage.generate_presigned_url_for_upload(
                 upload_session_id=session.id,
+                document_id=document.id,
                 key=document.s3_key,
                 user_id=self.user.id,
             )

@@ -17,6 +17,13 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class ChunkRefreshSerializer(serializers.Serializer):
+    bounding_polygons = serializers.ListField(
+        child=serializers.DictField(),
+        allow_empty=False,
+    )
+
+
 class SemanticSearchSerializer(serializers.Serializer):
     query = serializers.CharField()
     top_k = serializers.IntegerField(min_value=1, max_value=50, default=5)

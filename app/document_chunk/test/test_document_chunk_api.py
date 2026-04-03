@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from django.urls import reverse
 from django.contrib.auth import get_user_model
 from rest_framework.test import APITestCase
@@ -22,13 +22,13 @@ class DocumentChunkViewsTestCase(APITestCase):
 
         self.document = Document.objects.create(
             user=self.user,
-            url="http://test.com/file.pdf",
+            status=Document.Status.PROCESSED,
             s3_key="key.pdf",
         )
 
         self.other_document = Document.objects.create(
             user=self.other_user,
-            url="http://test.com/file2.pdf",
+            status=Document.Status.PROCESSED,
             s3_key="key2.pdf",
         )
 
@@ -130,6 +130,108 @@ class DocumentChunkViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
+class ChunkRefreshViewTestCase(APITestCase):
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email="refresh@test.com", password="password123"
+        )
+        self.document = Document.objects.create(
+            user=self.user,
+            status=Document.Status.PROCESSED,
+            s3_key="docs/file.pdf",
+        )
+        self.chunk = DocumentChunk.objects.create(
+            document=self.document,
+            content="Original content",
+            embedding=[0.0] * 1024,
+            chunk_index=0,
+            bounding_polygons=[
+                {
+                    "page_number": 1,
+                    "points": [[0, 0], [100, 0], [100, 50], [0, 50]],
+                }
+            ],
+        )
+        self.url = reverse(
+            "document-chunk-refresh", kwargs={"id": self.chunk.id}
+        )
+        self.valid_polygons = [
+            {
+                "page_number": 1,
+                "points": [[10, 10], [200, 10], [200, 60], [10, 60]],
+            }
+        ]
+
+    @patch("document_chunk.views.ChunkRefreshService")
+    def test_refresh_updates_chunk_and_returns_200(self, mock_service_cls):
+        mock_service = MagicMock()
+        mock_service_cls.return_value = mock_service
+
+        refreshed_chunk = self.chunk
+        refreshed_chunk.content = "New content from polygon"
+        refreshed_chunk.embedding = [0.1] * 1024
+        refreshed_chunk.bounding_polygons = self.valid_polygons
+        mock_service.refresh.return_value = refreshed_chunk
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            self.url,
+            {"bounding_polygons": self.valid_polygons},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], str(self.chunk.id))
+        mock_service.refresh.assert_called_once_with(
+            chunk=self.chunk,
+            bounding_polygons=self.valid_polygons,
+        )
+
+    @patch("document_chunk.views.ChunkRefreshService")
+    def test_refresh_returns_400_when_polygons_empty(self, mock_service_cls):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            self.url,
+            {"bounding_polygons": []},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_service_cls.return_value.refresh.assert_not_called()
+
+    @patch("document_chunk.views.ChunkRefreshService")
+    def test_refresh_returns_400_when_polygons_missing(self, mock_service_cls):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(self.url, {}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_service_cls.return_value.refresh.assert_not_called()
+
+    def test_refresh_requires_authentication(self):
+        response = self.client.patch(
+            self.url,
+            {"bounding_polygons": self.valid_polygons},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_refresh_returns_404_for_nonexistent_chunk(self):
+        import uuid
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse("document-chunk-refresh", kwargs={"id": uuid.uuid4()})
+
+        response = self.client.patch(
+            url,
+            {"bounding_polygons": self.valid_polygons},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class SemanticSearchViewTestCase(APITestCase):
 
     def setUp(self):
@@ -138,7 +240,7 @@ class SemanticSearchViewTestCase(APITestCase):
         )
         self.document = Document.objects.create(
             user=self.user,
-            url="http://test.com/file.pdf",
+            status=Document.Status.PROCESSED,
             s3_key="search-key.pdf",
         )
         self.embedding = [0.1] * 1024

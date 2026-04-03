@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== 1. Desactivando autoscaling ===" -ForegroundColor Cyan
+Write-Host "=== 1. Disabling autoscaling ===" -ForegroundColor Cyan
 aws application-autoscaling register-scalable-target `
   --service-namespace ecs `
   --resource-id "service/$ClusterName/$ServiceName" `
@@ -16,18 +16,18 @@ aws application-autoscaling register-scalable-target `
   --min-capacity 0 `
   --max-capacity 0
 
-Write-Host "=== 2. Bajando servicio ECS a 0 tareas ===" -ForegroundColor Cyan
+Write-Host "=== 2. Scaling ECS service down to 0 tasks ===" -ForegroundColor Cyan
 aws ecs update-service `
   --cluster $ClusterName `
   --service $ServiceName `
   --desired-count 0
 
-Write-Host "=== 3. Esperando que el servicio estabilice ===" -ForegroundColor Cyan
+Write-Host "=== 3. Waiting for the service to stabilize ===" -ForegroundColor Cyan
 aws ecs wait services-stable `
   --cluster $ClusterName `
   --services $ServiceName
 
-Write-Host "=== 4. Esperando que las ENIs de ECS se liberen ===" -ForegroundColor Cyan
+Write-Host "=== 4. Waiting for ECS ENIs to be released ===" -ForegroundColor Cyan
 $maxAttempts = 20
 $attempt = 0
 do {
@@ -37,10 +37,10 @@ do {
     --query "NetworkInterfaces[*].NetworkInterfaceId" `
     --output json | ConvertFrom-Json
   $attempt++
-  Write-Host "Intento $attempt`: $($enis.Count) ENIs activas"
+  Write-Host "Attempt $attempt`: $($enis.Count) active ENIs"
 } while ($enis.Count -gt 0 -and $attempt -lt $maxAttempts)
 
-Write-Host "=== 5. Liberando EIPs ===" -ForegroundColor Cyan
+Write-Host "=== 5. Releasing EIPs ===" -ForegroundColor Cyan
 $addresses = aws ec2 describe-addresses `
   --filters "Name=domain,Values=vpc" `
   --query "Addresses[*].{AllocId:AllocationId,AssocId:AssociationId}" `
@@ -53,7 +53,7 @@ foreach ($addr in $addresses) {
   aws ec2 release-address --allocation-id $addr.AllocId
 }
 
-Write-Host "=== 6. Corriendo terraform destroy ===" -ForegroundColor Cyan
+Write-Host "=== 6. Running terraform destroy ===" -ForegroundColor Cyan
 terraform destroy -auto-approve
 
-Write-Host "=== Destroy completado ===" -ForegroundColor Green
+Write-Host "=== Destroy completed ===" -ForegroundColor Green

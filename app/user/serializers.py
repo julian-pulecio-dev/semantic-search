@@ -1,6 +1,8 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+User = get_user_model()
+
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for the users object."""
@@ -25,3 +27,12 @@ class UserSerializer(serializers.ModelSerializer):
             user.save()
 
         return user
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    token = serializers.UUIDField()
+    new_password = serializers.CharField(min_length=5, write_only=True)

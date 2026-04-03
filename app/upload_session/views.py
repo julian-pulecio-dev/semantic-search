@@ -12,6 +12,7 @@ from upload_session.services.upload_session_service import (
     UploadSessionService,
 )
 from upload_session.serializers import (
+    CreateUploadSessionSerializer,
     UploadSessionSerializer,
     UploadSessionDetailSerializer,
 )
@@ -35,6 +36,7 @@ class CreateUploadSessionView(APIView):
     authentication_classes = [JWTAuthentication]
 
     @extend_schema(
+        request=CreateUploadSessionSerializer,
         responses={201: UploadSessionSerializer},
     )
     def post(self, request):

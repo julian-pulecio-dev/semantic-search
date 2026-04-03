@@ -6,36 +6,36 @@ set -e
 
 CONTAINER_NAME="${1:-app}"
 
-echo "=== 1. Buscando clusters disponibles ==="
+echo "=== 1. Looking for available clusters ==="
 CLUSTERS=$(aws ecs list-clusters --query "clusterArns[*]" --output text)
 
 if [ -z "$CLUSTERS" ]; then
-  echo "No se encontraron clusters ECS"
+  echo "No ECS clusters found"
   exit 1
 fi
 
-# Convertir la salida en un array
+# Convert output into an array
 IFS=$'\t' read -r -a CLUSTER_LIST <<< "$CLUSTERS"
 
 if [ "${#CLUSTER_LIST[@]}" -eq 1 ]; then
   CLUSTER_ARN="${CLUSTER_LIST[0]}"
 else
-  echo "Clusters disponibles:"
+  echo "Available clusters:"
   for i in "${!CLUSTER_LIST[@]}"; do
     echo "  [$i] ${CLUSTER_LIST[$i]}"
   done
-  read -r -p "Selecciona el numero del cluster: " SELECTION
+  read -r -p "Select the cluster number: " SELECTION
   CLUSTER_ARN="${CLUSTER_LIST[$SELECTION]}"
 fi
 
 CLUSTER_NAME="${CLUSTER_ARN##*/}"
-echo "Cluster seleccionado: $CLUSTER_NAME"
+echo "Selected cluster: $CLUSTER_NAME"
 
-echo "=== 2. Buscando servicios en el cluster ==="
+echo "=== 2. Looking for services in the cluster ==="
 SERVICES=$(aws ecs list-services --cluster "$CLUSTER_NAME" --query "serviceArns[*]" --output text)
 
 if [ -z "$SERVICES" ]; then
-  echo "No se encontraron servicios en el cluster $CLUSTER_NAME"
+  echo "No services found in cluster $CLUSTER_NAME"
   exit 1
 fi
 
@@ -44,18 +44,18 @@ IFS=$'\t' read -r -a SERVICE_LIST <<< "$SERVICES"
 if [ "${#SERVICE_LIST[@]}" -eq 1 ]; then
   SERVICE_ARN="${SERVICE_LIST[0]}"
 else
-  echo "Servicios disponibles:"
+  echo "Available services:"
   for i in "${!SERVICE_LIST[@]}"; do
     echo "  [$i] ${SERVICE_LIST[$i]}"
   done
-  read -r -p "Selecciona el numero del servicio: " SELECTION
+  read -r -p "Select the service number: " SELECTION
   SERVICE_ARN="${SERVICE_LIST[$SELECTION]}"
 fi
 
 SERVICE_NAME="${SERVICE_ARN##*/}"
-echo "Servicio seleccionado: $SERVICE_NAME"
+echo "Selected service: $SERVICE_NAME"
 
-echo "=== 3. Obteniendo tarea activa del servicio ==="
+echo "=== 3. Getting active task for the service ==="
 TASK_ARN=$(aws ecs list-tasks \
   --cluster "$CLUSTER_NAME" \
   --service-name "$SERVICE_NAME" \
@@ -63,13 +63,13 @@ TASK_ARN=$(aws ecs list-tasks \
   --output text)
 
 if [ -z "$TASK_ARN" ] || [ "$TASK_ARN" = "None" ]; then
-  echo "No hay tareas activas en el servicio $SERVICE_NAME"
+  echo "No active tasks in service $SERVICE_NAME"
   exit 1
 fi
 
-echo "Tarea encontrada: $TASK_ARN"
+echo "Task found: $TASK_ARN"
 
-echo "=== 4. Abriendo sesion en el contenedor ==="
+echo "=== 4. Opening session in the container ==="
 aws ecs execute-command \
   --cluster "$CLUSTER_NAME" \
   --task "$TASK_ARN" \
