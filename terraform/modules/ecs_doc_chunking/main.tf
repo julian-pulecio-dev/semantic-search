@@ -4,8 +4,10 @@ module "ecs_cluster" {
 }
 
 module "iam_role" {
-  source = "./iam_role"
-  name   = "${var.name}-ecsTaskExecutionRole"
+  source                 = "./iam_role"
+  name                   = "${var.name}-ecsTaskExecutionRole"
+  db_password_secret_arn = var.db_password_secret_arn
+  db_user_secret_arn     = var.db_user_secret_arn
 }
 
 module "ecs_task_definition" {
@@ -19,11 +21,14 @@ module "ecs_task_definition" {
     { name = "SQS_QUEUE_URL",  value = var.sqs_queue_url },
     { name = "DB_HOST",        value = var.db_host },
     { name = "DB_NAME",        value = var.db_name },
-    { name = "DB_USER",        value = var.db_user },
-    { name = "DB_PASSWORD",    value = var.db_password },
     { name = "DB_PORT",        value = var.db_port },
     { name = "S3_BUCKET_NAME", value = var.s3_bucket_name }
   ]
+  secret_variables = [
+    { name = "DB_USER",     valueFrom = var.db_user_secret_arn },
+    { name = "DB_PASSWORD", valueFrom = var.db_password_secret_arn }
+  ]
+
 }
 
 module "service" {

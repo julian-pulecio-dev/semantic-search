@@ -1,3 +1,19 @@
+data "aws_secretsmanager_secret" "db_password" {
+  name = var.db_password_secret_name
+}
+
+data "aws_secretsmanager_secret_version" "db_password" {
+  secret_id = data.aws_secretsmanager_secret.db_password.id
+}
+
+data "aws_secretsmanager_secret" "db_user" {
+  name = var.db_user_secret_name
+}
+
+data "aws_secretsmanager_secret_version" "db_user" {
+  secret_id = data.aws_secretsmanager_secret.db_user.id
+}
+
 module "s3" {
   source = "./modules/s3"
 }
@@ -22,9 +38,9 @@ module "vpc" {
 module "rds" {
   source = "./modules/rds"
   vpc_id = module.vpc.vpc_id
-  db_name = var.db_name
-  db_user = var.db_user
-  db_password = var.db_password
+  db_name     = var.db_name
+  db_user     = data.aws_secretsmanager_secret_version.db_user.secret_string
+  db_password = data.aws_secretsmanager_secret_version.db_password.secret_string
   subnet_group_name = module.vpc.subnet_group_name
   allowed_security_group_ids = [module.vpc.security_group_id]
 }
@@ -38,22 +54,22 @@ module "ecs_doc_chunking" {
   s3_bucket_name      = module.s3.bucket_name
   subnet_ids          = module.vpc.subnet_ids
   security_group_id   = module.vpc.security_group_id
-  db_name             = var.db_name
-  db_user             = var.db_user
-  db_password         = var.db_password
-  db_host             = module.rds.database_host
-  db_port             = module.rds.database_port
-  desired_count       = var.ecs_desired_count
+  db_name                = var.db_name
+  db_user_secret_arn     = data.aws_secretsmanager_secret.db_user.arn
+  db_password_secret_arn = data.aws_secretsmanager_secret.db_password.arn
+  db_host                = module.rds.database_host
+  db_port                = module.rds.database_port
+  desired_count          = var.ecs_desired_count
 }
 
 module "ecs_web" {
   source            = "./modules/ecs_web"
   name              = "${var.name}-ecs"
-  db_name           = var.db_name
-  db_user           = var.db_user
-  db_password       = var.db_password
-  db_host           = module.rds.database_host
-  db_port           = module.rds.database_port
+  db_name                = var.db_name
+  db_user_secret_arn     = data.aws_secretsmanager_secret.db_user.arn
+  db_password_secret_arn = data.aws_secretsmanager_secret.db_password.arn
+  db_host                = module.rds.database_host
+  db_port                = module.rds.database_port
   s3_bucket_name    = module.s3.bucket_name
   subnet_ids        = module.vpc.subnet_ids
   security_group_id = module.vpc.security_group_id

@@ -16,6 +16,10 @@ services:
 
   semantic-search-db:
     image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     volumes:
       - pgdata:/var/lib/postgresql/data
 

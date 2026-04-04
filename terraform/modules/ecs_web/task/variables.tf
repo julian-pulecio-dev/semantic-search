@@ -17,6 +17,15 @@ variable "container_command" {
   type = list(string)
 }
 
+variable "secret_variables" {
+  description = "Secrets injected into the container from Secrets Manager (not stored in tfstate)"
+  type = list(object({
+    name      = string
+    valueFrom = string
+  }))
+  default = []
+}
+
 variable "s3_bucket_name" {
   type = string
 }

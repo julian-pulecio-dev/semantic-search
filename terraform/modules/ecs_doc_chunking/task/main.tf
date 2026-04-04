@@ -122,6 +122,7 @@ resource "aws_ecs_task_definition" "doc_chunking" {
       }
 
       environment = var.environment_variables
+      secrets     = var.secret_variables
     }
   ])
 }

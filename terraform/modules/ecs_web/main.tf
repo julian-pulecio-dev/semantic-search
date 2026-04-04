@@ -4,76 +4,46 @@ module "ecs_cluster" {
 }
 
 module "iam_role" {
-  source = "./iam_role"
-  name = "${var.name}-ecsTaskExecutionRole-dockerhub"
+  source                 = "./iam_role"
+  name                   = "${var.name}-ecsTaskExecutionRole-dockerhub"
+  db_password_secret_arn = var.db_password_secret_arn
+  db_user_secret_arn     = var.db_user_secret_arn
 }
 
 module "ecs_task_definition" {
-  name = "${var.name}-ecs-task-definition-app"
+  name   = "${var.name}-ecs-task-definition-app"
   source = "./task"
   iam_role_arn = module.iam_role.arn
   environment_variables = [
-    {
-      name  = "DB_HOST"
-      value = var.db_host
-    },
-    {
-      name  = "DB_NAME"
-      value = var.db_name
-    },
-    {
-      name  = "DB_USER"
-      value = var.db_user
-    },
-    {
-      name  = "DB_PASSWORD"
-      value = var.db_password
-    },
-    {
-      name  = "DB_PORT"
-      value = var.db_port
-    },
-    {
-      name  = "S3_BUCKET_NAME"
-      value = var.s3_bucket_name
-    }
+    { name = "DB_HOST",        value = var.db_host },
+    { name = "DB_NAME",        value = var.db_name },
+    { name = "DB_PORT",        value = var.db_port },
+    { name = "S3_BUCKET_NAME", value = var.s3_bucket_name }
+  ]
+  secret_variables = [
+    { name = "DB_USER",     valueFrom = var.db_user_secret_arn },
+    { name = "DB_PASSWORD", valueFrom = var.db_password_secret_arn }
   ]
   container_command = []
-  s3_bucket_name = var.s3_bucket_name
+  s3_bucket_name    = var.s3_bucket_name
 }
 
 module "ecs_task_definition_migrate" {
-  name = "${var.name}-ecs-task-definition-migrate"
+  name   = "${var.name}-ecs-task-definition-migrate"
   source = "./task"
   iam_role_arn = module.iam_role.arn
   environment_variables = [
-    {
-      name  = "DB_HOST"
-      value = var.db_host
-    },
-    {
-      name  = "DB_NAME"
-      value = var.db_name
-    },
-    {
-      name  = "DB_USER"
-      value = var.db_user
-    },
-    {
-      name  = "DB_PASSWORD"
-      value = var.db_password
-    },
-    {
-      name  = "DB_PORT"
-      value = var.db_port
-    },
-    {
-      name  = "S3_BUCKET_NAME"
-      value = var.s3_bucket_name
-    }
+    { name = "DB_HOST",        value = var.db_host },
+    { name = "DB_NAME",        value = var.db_name },
+    { name = "DB_PORT",        value = var.db_port },
+    { name = "S3_BUCKET_NAME", value = var.s3_bucket_name }
+  ]
+  secret_variables = [
+    { name = "DB_USER",     valueFrom = var.db_user_secret_arn },
+    { name = "DB_PASSWORD", valueFrom = var.db_password_secret_arn }
   ]
   container_command = ["python", "manage.py", "migrate", "--noinput"]
-  s3_bucket_name = var.s3_bucket_name
+  s3_bucket_name    = var.s3_bucket_name
 }
 
 module "ecs_service" {
