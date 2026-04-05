@@ -1,12 +1,12 @@
 resource "aws_appautoscaling_target" "doc_chunking" {
-  min_capacity       = 1
+  min_capacity       = 0                                 # permite escalar a 0
   max_capacity       = var.max_capacity
   resource_id        = "service/${var.cluster_name}/${var.service_name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }
 
-# --- Scale-out policy: add 1 task per threshold breach ---
+# --- Scale-out policy: multi-step para manejar bursts ---
 
 resource "aws_appautoscaling_policy" "scale_out" {
   name               = "${var.name}-scale-out"
@@ -16,25 +16,40 @@ resource "aws_appautoscaling_policy" "scale_out" {
   service_namespace  = aws_appautoscaling_target.doc_chunking.service_namespace
 
   step_scaling_policy_configuration {
-    adjustment_type         = "ChangeInCapacity"
-    cooldown                = 60
-    metric_aggregation_type = "Maximum"
+    adjustment_type          = "ExactCapacity"           # desde 0, necesitamos capacidad exacta en el primer paso
+    cooldown                 = 60
+    metric_aggregation_type  = "Maximum"
 
+    # Cualquier mensaje: arrancar al menos 1 tarea
     step_adjustment {
       metric_interval_lower_bound = 0
+      metric_interval_upper_bound = var.scale_out_threshold
       scaling_adjustment          = 1
+    }
+
+    # 1× threshold: 2 tareas
+    step_adjustment {
+      metric_interval_lower_bound = var.scale_out_threshold
+      metric_interval_upper_bound = var.scale_out_threshold * 5
+      scaling_adjustment          = 2
+    }
+
+    # 5× threshold: 3 tareas
+    step_adjustment {
+      metric_interval_lower_bound = var.scale_out_threshold * 5
+      scaling_adjustment          = 3
     }
   }
 }
 
-# Alarm based on Visible + NotVisible (in-flight) so messages being processed
-# don't make the metric drop to 0 and prevent scale-out from firing.
+# Alarma de scale-out: dispara con cualquier mensaje en la cola (threshold = 0)
 resource "aws_cloudwatch_metric_alarm" "scale_out" {
   alarm_name          = "${var.name}-scale-out"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
-  threshold           = var.scale_out_threshold
+  threshold           = 0                                # dispara con >= 1 mensaje
   alarm_actions       = [aws_appautoscaling_policy.scale_out.arn]
+  treat_missing_data  = "notBreaching"
 
   metric_query {
     id          = "total"
@@ -70,7 +85,7 @@ resource "aws_cloudwatch_metric_alarm" "scale_out" {
   }
 }
 
-# --- Scale-in policy: remove 1 task when queue is fully empty for 3 consecutive minutes ---
+# --- Scale-in policy: escala a 0 cuando la cola está vacía ---
 
 resource "aws_appautoscaling_policy" "scale_in" {
   name               = "${var.name}-scale-in"
@@ -80,13 +95,13 @@ resource "aws_appautoscaling_policy" "scale_in" {
   service_namespace  = aws_appautoscaling_target.doc_chunking.service_namespace
 
   step_scaling_policy_configuration {
-    adjustment_type         = "ChangeInCapacity"
-    cooldown                = 300
-    metric_aggregation_type = "Maximum"
+    adjustment_type          = "ExactCapacity"           # forzar a 0 directamente
+    cooldown                 = 300
+    metric_aggregation_type  = "Maximum"
 
     step_adjustment {
       metric_interval_upper_bound = 0
-      scaling_adjustment          = -1
+      scaling_adjustment          = 0                    # escala exactamente a 0 tareas
     }
   }
 }
@@ -97,6 +112,7 @@ resource "aws_cloudwatch_metric_alarm" "scale_in" {
   evaluation_periods  = 3
   threshold           = 0
   alarm_actions       = [aws_appautoscaling_policy.scale_in.arn]
+  treat_missing_data  = "notBreaching"
 
   metric_query {
     id          = "total"
