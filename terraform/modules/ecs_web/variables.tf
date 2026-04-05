@@ -50,3 +50,28 @@ variable "desired_count" {
   default     = null
   nullable    = true
 }
+
+variable "vpc_id" {
+  description = "The VPC ID (required by the ALB)"
+  type        = string
+}
+
+variable "min_capacity" {
+  description = "Minimum number of ECS tasks for autoscaling"
+  type        = number
+  default     = null
+  nullable    = true
+}
+
+variable "max_capacity" {
+  description = "Maximum number of ECS tasks for autoscaling"
+  type        = number
+  default     = null
+  nullable    = true
+}
+
+variable "requests_per_target" {
+  description = "Target requests per task per minute before scaling out"
+  type        = number
+  default     = 1000
+}

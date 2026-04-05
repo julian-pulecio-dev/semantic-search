@@ -63,15 +63,16 @@ module "ecs_doc_chunking" {
 }
 
 module "ecs_web" {
-  source            = "./modules/ecs_web"
-  name              = "${var.name}-ecs"
+  source                 = "./modules/ecs_web"
+  name                   = "${var.name}-ecs"
+  vpc_id                 = module.vpc.vpc_id
   db_name                = var.db_name
   db_user_secret_arn     = data.aws_secretsmanager_secret.db_user.arn
   db_password_secret_arn = data.aws_secretsmanager_secret.db_password.arn
   db_host                = module.rds.database_host
   db_port                = module.rds.database_port
-  s3_bucket_name    = module.s3.bucket_name
-  subnet_ids        = module.vpc.subnet_ids
-  security_group_id = module.vpc.security_group_id
-  desired_count     = var.ecs_desired_count
+  s3_bucket_name         = module.s3.bucket_name
+  subnet_ids             = module.vpc.subnet_ids
+  security_group_id      = module.vpc.security_group_id
+  desired_count          = var.ecs_desired_count
 }

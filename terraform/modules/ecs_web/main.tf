@@ -1,6 +1,6 @@
 module "ecs_cluster" {
   source = "./cluster"
-  name = "${var.name}-ecs-cluster"
+  name   = "${var.name}-ecs-cluster"
 }
 
 module "iam_role" {
@@ -46,12 +46,31 @@ module "ecs_task_definition_migrate" {
   s3_bucket_name    = var.s3_bucket_name
 }
 
+module "alb" {
+  source     = "./alb"
+  name       = "${var.name}-alb"
+  vpc_id     = var.vpc_id
+  subnet_ids = var.subnet_ids
+}
+
 module "ecs_service" {
-  source = "./service"
-  name = "${var.name}-ecs-service"
-  cluster_arn = module.ecs_cluster.arn
-  task_definition_arn = module.ecs_task_definition.arn
-  desired_count = coalesce(var.desired_count, 2)
-  vpc_subnets_ids = var.subnet_ids
+  source                = "./service"
+  name                  = "${var.name}-ecs-service"
+  cluster_arn           = module.ecs_cluster.arn
+  task_definition_arn   = module.ecs_task_definition.arn
+  desired_count         = coalesce(var.desired_count, 2)
+  vpc_subnets_ids       = var.subnet_ids
   vpc_security_group_id = var.security_group_id
+  target_group_arn      = module.alb.target_group_arn
+}
+
+module "autoscaling" {
+  source                  = "./autoscaling"
+  cluster_name            = module.ecs_cluster.name
+  service_name            = module.ecs_service.name
+  min_capacity            = coalesce(var.min_capacity, 2)
+  max_capacity            = coalesce(var.max_capacity, 10)
+  alb_arn_suffix          = module.alb.arn_suffix
+  target_group_arn_suffix = module.alb.target_group_arn_suffix
+  requests_per_target     = var.requests_per_target
 }
