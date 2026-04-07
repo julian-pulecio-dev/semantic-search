@@ -15,7 +15,11 @@ class S3FileLoaderService:
 
     def __init__(self, bucket_name):
         self.bucket_name = bucket_name
-        self.s3_client = boto3.client("s3")
+
+    @property
+    def s3_client(self):
+        """Always returns a client with fresh credentials."""
+        return boto3.client("s3")
 
     def build_document_key(self, user_id: int, upload_session_id: int) -> str:
         return f"documents/{user_id}/{upload_session_id}"
@@ -92,13 +96,11 @@ class S3FileLoaderService:
         fields = {
             "key": key,
             "Content-Type": "application/pdf",
-            "acl": "private",
             "x-amz-server-side-encryption": "AES256",
             **metadata,
         }
 
         conditions = [
-            {"acl": "private"},
             {"Content-Type": "application/pdf"},
             {"x-amz-server-side-encryption": "AES256"},
             ["starts-with", "$key", f"documents/{user_id}/"],
@@ -119,3 +121,14 @@ class S3FileLoaderService:
             "upload_session_id": str(upload_session_id),
             "document_id": str(document_id),
         }
+
+    def get_public_url(self, key: str) -> str:
+        """Return the public URL for a document stored in S3.
+
+        Arguments:
+            key (str): The S3 key of the file.
+        Returns:
+            str: The public URL of the file.
+        """
+        region = self.s3_client.meta.region_name
+        return f"https://{self.bucket_name}.s3.{region}.amazonaws.com/{key}"

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -51,7 +51,8 @@ class ChunkBoundingPolygon:
         self,
         chunk_text: str,
         pages: List[dict],
-    ) -> List[PagePolygon]:
+        page_cursors: Optional[Dict[int, int]] = None,
+    ) -> Tuple[List[PagePolygon], Dict[int, int]]:
         """
         Resolves the bounding polygons for a chunk across one or more pages.
 
@@ -60,36 +61,51 @@ class ChunkBoundingPolygon:
             pages: The list of page dicts returned by PDFTextExtractor.extract(),
                    each containing 'page_number', 'text', and 'words'.
                    Words are dicts with keys: 'text', 'x0', 'x1', 'top', 'bottom'.
+            page_cursors: Optional dict mapping page_number to the word index from
+                          which scanning should start on that page. Used to ensure
+                          chunk N is never matched against positions already consumed
+                          by chunk N-1. If None, scanning starts from position 0 on
+                          every page.
         Returns:
-            A list of PagePolygon, one per page the chunk touches, in page order.
-            Returns an empty list if no matching words are found.
+            A tuple of:
+              - A list of PagePolygon, one per page the chunk touches, in page order.
+                Returns an empty list if no matching words are found.
+              - An updated page_cursors dict reflecting where each page's scan ended,
+                to be passed into the next call.
         """
+        if page_cursors is None:
+            page_cursors = {}
+
         chunk_tokens = self._tokenize(chunk_text)
         remaining = chunk_tokens  # tokens still to be matched across pages
         polygons = []
+        updated_cursors = dict(page_cursors)
 
         for page in pages:
             if not remaining:
                 break
 
+            page_num = page["page_number"]
             page_words = page["words"]
             page_tokens = [self._normalize(w["text"]) for w in page_words]
+            start_from = page_cursors.get(page_num, 0)
 
-            matched_words, remaining = self._match_tokens(
-                remaining, page_tokens, page_words
+            matched_words, remaining, next_cursor = self._match_tokens(
+                remaining, page_tokens, page_words, start_from
             )
 
             if matched_words:
+                updated_cursors[page_num] = next_cursor
                 polygon = self._convex_hull(matched_words)
                 if polygon:
                     polygons.append(
                         PagePolygon(
-                            page_number=page["page_number"],
+                            page_number=page_num,
                             points=polygon,
                         )
                     )
 
-        return polygons
+        return polygons, updated_cursors
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -108,35 +124,42 @@ class ChunkBoundingPolygon:
         remaining_tokens: List[str],
         page_tokens: List[str],
         page_words: List[dict],
-    ) -> Tuple[List[dict], List[str]]:
+        start_from: int = 0,
+    ) -> Tuple[List[dict], List[str], int]:
         """
         Greedily matches as many leading tokens from `remaining_tokens` as
         possible against `page_tokens` using a sequential scan.
 
-        The scan advances through page tokens looking for each next expected
-        chunk token. Words that match are collected; the rest are skipped.
-        This tolerates minor insertions (e.g. hyphenation artefacts) in the
-        extracted text.
+        The scan starts at `start_from` so that a chunk never matches word
+        positions already consumed by a previous chunk on the same page.
+        Words that match are collected; the rest are skipped. This tolerates
+        minor insertions (e.g. hyphenation artefacts) in the extracted text.
 
         Args:
             remaining_tokens: Normalised chunk tokens not yet matched.
             page_tokens: Normalised tokens for all words on this page.
             page_words: Original word dicts corresponding to page_tokens.
+            start_from: Word index at which to begin scanning (exclusive lower
+                        bound — positions before this are already consumed).
         Returns:
-            A tuple of (matched_word_dicts, unmatched_remaining_tokens).
+            A tuple of (matched_word_dicts, unmatched_remaining_tokens, next_cursor)
+            where next_cursor is the page word index immediately after the last match,
+            to be used as start_from for the next chunk on this page.
         """
         matched_words = []
         token_idx = 0  # pointer into remaining_tokens
+        next_cursor = start_from
 
-        for i, page_token in enumerate(page_tokens):
+        for i in range(start_from, len(page_tokens)):
             if token_idx >= len(remaining_tokens):
                 break
-            if page_token == remaining_tokens[token_idx]:
+            if page_tokens[i] == remaining_tokens[token_idx]:
                 matched_words.append(page_words[i])
                 token_idx += 1
+                next_cursor = i + 1
 
         unmatched = remaining_tokens[token_idx:]
-        return matched_words, unmatched
+        return matched_words, unmatched, next_cursor
 
     def _convex_hull(self, words: List[dict]) -> List[Point]:
         """

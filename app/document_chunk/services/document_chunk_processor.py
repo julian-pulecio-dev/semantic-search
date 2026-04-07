@@ -179,11 +179,12 @@ class DocumentChunkProcessor:
             A list of Chunk objects.
         """
         chunks = []
+        page_cursors = {}
 
         for page in pages_data:
             for text in self.splitter.split_text(page["text"]):
-                polygons = self.bounding_polygon_resolver.resolve(
-                    text, pages_data
+                polygons, page_cursors = self.bounding_polygon_resolver.resolve(
+                    text, pages_data, page_cursors
                 )
                 chunks.append(
                     Chunk(

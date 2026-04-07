@@ -10,14 +10,16 @@ class CreateUploadSessionSerializer(serializers.Serializer):
 class PresignedPostFieldsSerializer(serializers.Serializer):
     key = serializers.CharField(help_text="S3 object key")
     Content_Type = serializers.CharField(source="Content-Type")
-    acl = serializers.CharField()
     x_amz_server_side_encryption = serializers.CharField(source="x-amz-server-side-encryption")
     x_amz_meta_upload_session_id = serializers.UUIDField(source="x-amz-meta-upload-session-id")
     x_amz_meta_document_id = serializers.UUIDField(source="x-amz-meta-document-id")
     x_amz_meta_user_id = serializers.UUIDField(source="x-amz-meta-user-id")
-    AWSAccessKeyId = serializers.CharField()
     policy = serializers.CharField()
-    signature = serializers.CharField()
+
+    def to_representation(self, instance):
+        # Pass through all fields from boto3 without filtering,
+        # since auth fields vary between IAM users (v2) and STS roles (v4).
+        return instance
 
 
 class PresignedPostUrlSerializer(serializers.Serializer):

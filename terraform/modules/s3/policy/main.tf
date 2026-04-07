@@ -7,14 +7,19 @@ resource "aws_s3_bucket_policy" "s3_bucket_policy" {
       {
         Sid       = "AllowPresignedPostUploads"
         Effect    = "Allow"
-        Principal = {
-          "AWS": "arn:aws:iam::686255988152:user/julianpulecio"
-        }
+        Principal = "*"
         Action    = [
           "s3:PutObject",
           "s3:PutObjectAcl"
         ]
         Resource  = "${var.s3_bucket_arn}/*"
+      },
+      {
+        Sid       = "AllowPublicDocumentRead"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${var.s3_bucket_arn}/documents/*"
       }
     ]
   })
