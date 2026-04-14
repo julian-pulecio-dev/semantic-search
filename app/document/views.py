@@ -11,8 +11,8 @@ BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 
 class ListAllDocumentsView(generics.ListAPIView):
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
     def get_queryset(self):
         return Document.objects.all()
@@ -20,8 +20,8 @@ class ListAllDocumentsView(generics.ListAPIView):
 
 class RetrieveDocumentView(generics.RetrieveAPIView):
     serializer_class = DocumentSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    authentication_classes = [JWTAuthentication]
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
 
     def get_queryset(self):
         return Document.objects.all()

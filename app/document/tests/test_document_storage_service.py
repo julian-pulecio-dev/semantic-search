@@ -13,9 +13,13 @@ class TestS3FileLoaderService(unittest.TestCase):
 
     def setUp(self):
         self.bucket_name = "test-bucket"
-        with patch("boto3.client") as _:
-            self.service = S3FileLoaderService(self.bucket_name)
-            self.mock_s3 = self.service.s3_client
+        self.patcher = patch("document.services.storage.boto3.client")
+        self.mock_boto_client = self.patcher.start()
+        self.mock_s3 = self.mock_boto_client.return_value
+        self.service = S3FileLoaderService(self.bucket_name)
+
+    def tearDown(self):
+        self.patcher.stop()
 
     def test_build_document_key(self):
         """Verify that the document key is built correctly based on user ID and

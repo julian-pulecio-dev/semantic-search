@@ -6,11 +6,6 @@ from typing import ClassVar, Optional, List
 
 from document.models import Document
 from document_chunk.models import DocumentChunk
-from document_chunk.services.exceptions.embedding_exceptions import (
-    EmbeddingError,
-    EmbeddingValidationError,
-)
-from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from document_chunk.services.exceptions.document_chunk_exceptions import (
     DocumentProcessingError,
     DocumentInvalidStatusError,
@@ -35,8 +30,9 @@ __all__ = [
 @dataclass(frozen=True)
 class Chunk:
     """
-    Immutable domain object. An embedding-enriched version is produced
-    via Chunk.with_embedding() rather than mutating the instance.
+    Immutable domain object representing a single text chunk.
+    Embeddings are no longer generated here — they are attached by
+    the dedicated embedding worker after chunks are persisted.
     """
 
     content: str
@@ -48,13 +44,6 @@ class Chunk:
     )
 
     def with_embedding(self, embedding: list) -> "Chunk":
-        """
-        Return a new Chunk with the embedding attached.
-        Args:
-            embedding: The embedding to attach to the chunk.
-        Returns:
-            A new Chunk instance with the embedding attached.
-        """
         return Chunk(
             content=self.content,
             page_number=self.page_number,
@@ -67,40 +56,40 @@ class Chunk:
 @dataclass
 class DocumentChunkProcessor:
     """
-    Orchestrates the full document processing pipeline: text extraction,
-    chunking, embedding generation, and persistence.
+    Orchestrates the text-extraction and chunking stage of the pipeline.
 
-    Only processes documents whose status is CREATED. Raises
-    DocumentInvalidStatusError immediately if the document is in any
-    other status.
+    Responsibilities
+    ----------------
+    1. Extract text and word-level coordinates from the PDF stored in S3.
+    2. Split the full document text into chunks with bounding-polygon data.
+    3. Persist all chunks to the database (embedding=None at this stage).
+    4. Set document.embedding_batches_total so the embedding worker knows
+       when the document is fully processed.
 
-    Text extraction is delegated to PDFTextExtractor, keeping this class
-    focused on chunking, embeddings, and document state management.
+    The embedding stage is handled by the separate EmbeddingWorker, which
+    consumes batches of chunk IDs from the embedding SQS queue.
 
-    Embeddings are generated in batches of `embedding_batch_size`. If a
-    batch fails, the affected chunks are saved without an embedding and the
-    document is marked as INCOMPLETED, allowing the caller to retry only
-    the chunks that are missing embeddings. If all batches succeed, the
-    document is marked as PROCESSED.
+    Document status transitions managed here
+    -----------------------------------------
+    PROCESSING  — set on __post_init__ (work has started)
+    FAILED      — set if chunk persistence raises DocumentPersistenceError
+    (PROCESSED / INCOMPLETED are set by ChunkEmbeddingService once all
+     embedding batches have been counted.)
     """
 
-    EMBEDDING_BATCH_SIZE: ClassVar[int] = 100
+    CHUNK_BATCH_SIZE: ClassVar[int] = 10
 
     document: Document
     pdf_extractor: Optional[PDFTextExtractor] = field(default=None)
-    embedding_processor: Optional[EmbeddingsProcessor] = field(default=None)
     splitter: Optional[RecursiveCharacterTextSplitter] = field(default=None)
     bounding_polygon_resolver: Optional[ChunkBoundingPolygon] = field(
         default=None
     )
-    embedding_batch_size: int = field(default=EMBEDDING_BATCH_SIZE)
+    chunk_batch_size: int = field(default=CHUNK_BATCH_SIZE)
 
     def __post_init__(self):
         if self.pdf_extractor is None:
             self.pdf_extractor = PDFTextExtractor()
-
-        if self.embedding_processor is None:
-            self.embedding_processor = EmbeddingsProcessor()
 
         if self.splitter is None:
             self.splitter = (
@@ -117,17 +106,15 @@ class DocumentChunkProcessor:
 
         self._update_document_status(Document.Status.PROCESSING)
 
-    def process(self) -> List[Chunk]:
+    def process(self) -> List[List[str]]:
         """
-        Run the full processing pipeline for the document.
-
-        Only processes documents in CREATED status.
+        Run the extraction and chunking stage.
 
         Returns:
-            A list of Chunk instances, each with an embedding if generation
-            succeeded, or embedding=None if its batch failed.
+            A list of batches, where each batch is a list of chunk ID
+            strings (UUIDs). The caller (DocumentChunkingHandler) sends
+            each batch as a separate SQS message to the embedding queue.
         Raises:
-            DocumentInvalidStatusError: If the document is not in CREATED status.
             DocumentPersistenceError: If saving chunks or updating status fails.
         """
         logger.info("Processing document %s", self.document.id)
@@ -144,138 +131,101 @@ class DocumentChunkProcessor:
             self.document.id,
         )
 
-        chunks = self._attach_embeddings_in_batches(chunks)
-
-        failed_count = sum(1 for c in chunks if c.embedding is None)
-
         try:
-            self._save_chunks(chunks)
+            saved_ids = self._save_chunks(chunks)
         except DocumentPersistenceError:
             self._update_document_status(Document.Status.FAILED)
             raise
 
-        if failed_count:
-            logger.warning(
-                "Document %s saved with %d chunks missing embeddings",
-                self.document.id,
-                failed_count,
-            )
-            self._update_document_status(Document.Status.INCOMPLETED)
-        else:
-            logger.info(
-                "Embedding generation completed for document %s",
-                self.document.id,
-            )
-            self._update_document_status(Document.Status.PROCESSED)
+        batches = [
+            saved_ids[i: i + self.chunk_batch_size]
+            for i in range(0, len(saved_ids), self.chunk_batch_size)
+        ]
 
-        return chunks
+        # Record how many embedding batches will be dispatched so the
+        # embedding worker can finalise the document status when the last
+        # batch completes.
+        total_batches = len(batches)
+        self.document.embedding_batches_total = total_batches
+        self.document.save(update_fields=["embedding_batches_total"])
+
+        if total_batches == 0:
+            # Edge case: document produced no chunks (e.g. empty PDF).
+            self._update_document_status(Document.Status.PROCESSED)
+            logger.info(
+                "Document %s has no chunks, marked as PROCESSED",
+                self.document.id,
+            )
+
+        logger.info(
+            "Document %s: %d chunks saved, %d embedding batches to dispatch",
+            self.document.id,
+            len(saved_ids),
+            total_batches,
+        )
+
+        return batches
 
     def _text_to_chunks(self, pages_data: List[dict]) -> List[Chunk]:
         """
-        Converts page text into chunks using the configured text splitter.
-        Args:
-            pages_data: A list of dicts containing 'page_number' and 'text'.
-        Returns:
-            A list of Chunk objects.
-        """
-        chunks = []
-        page_cursors = {}
+        Converts document text into Chunk objects using the configured splitter.
 
-        for page in pages_data:
-            for text in self.splitter.split_text(page["text"]):
-                polygons, page_cursors = self.bounding_polygon_resolver.resolve(
-                    text, pages_data, page_cursors
+        The full document text is concatenated from all pages before splitting
+        so that chunk boundaries respect the natural document flow across pages.
+        """
+        full_text = "\n\n".join(page["text"] for page in pages_data)
+        raw_chunks = self.splitter.split_text(full_text)
+
+        chunks = []
+        page_cursors: dict = {}
+
+        for text in raw_chunks:
+            polygons, page_cursors = self.bounding_polygon_resolver.resolve(
+                text, pages_data, page_cursors
+            )
+
+            page_number = (
+                polygons[0].page_number
+                if polygons
+                else pages_data[0]["page_number"]
+            )
+
+            chunks.append(
+                Chunk(
+                    content=text,
+                    page_number=page_number,
+                    document_id=self.document.id,
+                    bounding_polygons=[
+                        {
+                            "page_number": p.page_number,
+                            "points": [list(pt) for pt in p.points],
+                        }
+                        for p in polygons
+                    ],
                 )
-                chunks.append(
-                    Chunk(
-                        content=text,
-                        page_number=page["page_number"],
-                        document_id=self.document.id,
-                        bounding_polygons=[
-                            {
-                                "page_number": p.page_number,
-                                "points": [list(pt) for pt in p.points],
-                            }
-                            for p in polygons
-                        ],
-                    )
-                )
+            )
 
         return chunks
 
-    def _attach_embeddings_in_batches(
-        self, chunks: List[Chunk]
-    ) -> List[Chunk]:
-        """
-        Attaches embeddings to chunks in batches of `embedding_batch_size`.
-
-        Each batch is processed independently. If a batch fails, those chunks
-        are left with embedding=None and processing continues with the next
-        batch.
-        Args:
-            chunks: A list of Chunk objects to attach embeddings to.
-        Returns:
-            A list of Chunk objects. Chunks whose batch succeeded carry their
-            embedding; chunks whose batch failed retain embedding=None.
-        """
-        result = []
-
-        for batch_start in range(0, len(chunks), self.embedding_batch_size):
-            batch = chunks[
-                batch_start: batch_start + self.embedding_batch_size
-            ]
-            result.extend(self._attach_embeddings(batch))
-
-        return result
-
-    def _attach_embeddings(self, chunks: List[Chunk]) -> List[Chunk]:
-        """
-        Attempts to attach embeddings to a single batch of chunks via one
-        API call. If the call fails, the chunks are returned unchanged
-        (embedding=None) and the error is logged.
-        Args:
-            chunks: A list of Chunk objects representing one batch.
-        Returns:
-            A list of Chunk objects with embeddings attached if the call
-            succeeded, or unchanged if it failed.
-        """
-        try:
-            texts = [c.content for c in chunks]
-
-            embedding_result = self.embedding_processor.embed_batch(texts)
-            embedding_result.raise_on_errors()
-
-            return [
-                chunk.with_embedding(emb)
-                for chunk, emb in zip(chunks, embedding_result.embeddings)
-            ]
-
-        except (EmbeddingError, EmbeddingValidationError, RuntimeError) as e:
-            logger.error(
-                "Embedding batch failed for document %s (%d chunks skipped): %s",
-                self.document.id,
-                len(chunks),
-                e,
-            )
-            return chunks
-
     @handle_persistence_errors
-    def _save_chunks(self, chunks: List[Chunk]) -> None:
+    def _save_chunks(self, chunks: List[Chunk]) -> List[str]:
         """
-        Persists all chunks to the database in a single bulk operation.
-        Chunks may have embedding=None if their batch failed during
-        embedding generation.
-        Args:
-            chunks: A list of Chunk objects, with or without embeddings.
+        Persists all chunks to the database and returns their IDs.
+
+        Chunks are saved without embeddings (embedding=None). The embedding
+        worker will populate these fields in a subsequent stage.
+
+        Returns:
+            List of chunk ID strings (UUIDs) in chunk_index order.
         Raises:
-            DocumentPersistenceError: If saving fails.
+            DocumentPersistenceError: If bulk_create fails.
         """
-        DocumentChunk.objects.bulk_create(
+        created = DocumentChunk.objects.bulk_create(
             [
                 DocumentChunk(
                     document=self.document,
                     content=chunk.content,
-                    embedding=chunk.embedding,
+                    embedding=None,
                     chunk_index=index,
                     bounding_polygons=chunk.bounding_polygons,
                 )
@@ -285,19 +235,14 @@ class DocumentChunkProcessor:
 
         logger.info(
             "Saved %d chunks for document %s",
-            len(chunks),
+            len(created),
             self.document.id,
         )
 
+        return [str(c.id) for c in created]
+
     @handle_persistence_errors
     def _update_document_status(self, status: str) -> None:
-        """
-        Updates the status of the document being processed.
-        Args:
-            status: The new status to set on the document.
-        Raises:
-            DocumentPersistenceError: If the document status cannot be updated.
-        """
         self.document.status = status
         self.document.save(update_fields=["status"])
         logger.info(

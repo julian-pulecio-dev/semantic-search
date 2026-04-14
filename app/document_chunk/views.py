@@ -16,25 +16,25 @@ from document_chunk.services.chunk_refresh_service import ChunkRefreshService
 
 class DocumentChunkListView(generics.ListAPIView):
     serializer_class = DocumentChunkSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = []
 
     def get_queryset(self):
         document_id = self.kwargs["document_id"]
 
         return (
             DocumentChunk.objects.select_related("document")
-            .filter(document_id=document_id, document__user=self.request.user)
+            .filter(document_id=document_id)
             .order_by("chunk_index")
         )
 
 
 class DocumentChunkDetailView(generics.RetrieveAPIView):
     serializer_class = DocumentChunkSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = []
     lookup_field = "id"
 
     def get_queryset(self):
-        return DocumentChunk.objects.filter(document__user=self.request.user)
+        return DocumentChunk.objects.all()
 
 
 class ChunkRefreshView(APIView):
@@ -62,7 +62,7 @@ class ChunkRefreshView(APIView):
 
 
 class SemanticSearchView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = []
 
     @extend_schema(
         request=SemanticSearchSerializer,
@@ -73,17 +73,19 @@ class SemanticSearchView(APIView):
         serializer.is_valid(raise_exception=True)
 
         query = serializer.validated_data["query"]
-        top_k = serializer.validated_data["top_k"]
+        threshold = serializer.validated_data["threshold"]
 
         embedding = EmbeddingsProcessor().get_embedding(query)
 
+        # CosineDistance ∈ [0, 2]; similarity = 1 − distance.
+        # similarity ≥ threshold  ↔  distance ≤ 1 − threshold
+        max_distance = 1 - threshold
+
         chunks = (
-            DocumentChunk.objects.filter(
-                document__user=request.user,
-                embedding__isnull=False,
-            )
+            DocumentChunk.objects.filter(embedding__isnull=False)
             .annotate(distance=CosineDistance("embedding", embedding))
-            .order_by("distance")[:top_k]
+            .filter(distance__lte=max_distance)
+            .order_by("distance")
         )
 
         return Response(

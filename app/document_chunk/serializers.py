@@ -26,4 +26,6 @@ class ChunkRefreshSerializer(serializers.Serializer):
 
 class SemanticSearchSerializer(serializers.Serializer):
     query = serializers.CharField()
-    top_k = serializers.IntegerField(min_value=1, max_value=50, default=5)
+    threshold = serializers.FloatField(
+        min_value=0.0, max_value=1.0, default=0.8
+    )

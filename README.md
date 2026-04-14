@@ -15,7 +15,8 @@ Built to production standards: event-driven async processing on AWS, horizontal 
 - **Scalable workers** — thread pool with SQS heartbeat extension; graceful `SIGTERM` shutdown
 - **Horizontal autoscaling** — ECS web service scales on ALB request count; doc-chunking worker scales on SQS queue depth
 - **Production infrastructure** — VPC, RDS, ALB, Secrets Manager, CloudWatch, all in Terraform
-- **JWT authentication** — all endpoints require a valid access token; search is scoped to the requesting user's documents
+- **JWT authentication** — write endpoints require a valid access token; chunk retrieval and semantic search are publicly accessible
+- **Bounding polygons** — each chunk carries convex-hull coordinates per page; overlapping chunks share the same page region so polygons stack visually with semi-transparent rendering
 - **CI/CD pipeline** — GitHub Actions builds, tests, migrates, and deploys on every push to `main`
 
 ---
@@ -72,20 +73,19 @@ Built to production standards: event-driven async processing on AWS, horizontal 
 
 ## Semantic Search Flow
 
-1. Client sends a query via `POST /api/chunk/search/`
+1. Client sends a query via `POST /api/chunk/search/` (no authentication required)
 2. Query text is embedded using Amazon Titan Embed Text v2
-3. pgvector executes a cosine-distance nearest-neighbor search over the HNSW index
-4. Top-k chunks are returned, ranked by similarity, scoped to the authenticated user's documents
+3. pgvector executes a cosine-distance search over the HNSW index
+4. All chunks whose cosine similarity meets or exceeds `threshold` are returned, ranked by similarity, across all documents
 
 ### Example
 
 ```
 POST /api/chunk/search/
-Authorization: Bearer <token>
 
 {
   "query": "termination clauses in contracts",
-  "top_k": 3
+  "threshold": 0.75
 }
 ```
 
@@ -96,14 +96,21 @@ Authorization: Bearer <token>
     "document": "b7e9f012-...",
     "chunk_index": 4,
     "content": "Either party may terminate this agreement upon 30 days written notice...",
-    "bounding_polygons": [[120, 340], [480, 340], [480, 390], [120, 390]],
+    "bounding_polygons": [
+      {
+        "page_number": 1,
+        "points": [[120, 340], [480, 340], [480, 390], [120, 390]]
+      }
+    ],
     "created_at": "2024-11-15T10:23:44Z"
   },
   ...
 ]
 ```
 
-`top_k` defaults to 5 and is capped at 50.
+`threshold` is a float between `0.0` and `1.0` (default `0.8`). A higher value returns only closer matches; `0.0` returns all chunks regardless of similarity.
+
+Cosine similarity is derived from pgvector's `CosineDistance` as `similarity = 1 − distance`. Only chunks with `distance ≤ 1 − threshold` are returned.
 
 ---
 
@@ -148,19 +155,21 @@ RDS is the current vertical scaling boundary. pgvector's HNSW index keeps search
 
 ## API Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/token/` | Obtain JWT token pair |
-| `POST` | `/api/token/refresh/` | Refresh access token |
-| `POST` | `/api/token/verify/` | Verify token |
-| `*` | `/api/user/` | User management |
-| `*` | `/api/document/` | Document CRUD + upload |
-| `*` | `/api/document_type/` | Document type management |
-| `POST` | `/api/chunk/search/` | Semantic search over chunks |
-| `*` | `/api/chunk/` | Chunk management |
-| `*` | `/api/upload_session/` | Upload session tracking |
-| `GET` | `/api/schema/swagger/` | Swagger UI |
-| `GET` | `/api/schema/redoc/` | ReDoc UI |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/token/` | — | Obtain JWT token pair |
+| `POST` | `/api/token/refresh/` | — | Refresh access token |
+| `POST` | `/api/token/verify/` | — | Verify token |
+| `*` | `/api/user/` | Required | User management |
+| `*` | `/api/document/` | Required | Document CRUD + upload |
+| `*` | `/api/document_type/` | Required | Document type management |
+| `*` | `/api/upload_session/` | Required | Upload session tracking |
+| `GET` | `/api/chunk/documents/{id}/chunks/` | — | List chunks for a document |
+| `GET` | `/api/chunk/chunks/{id}/` | — | Retrieve a single chunk |
+| `PATCH` | `/api/chunk/chunks/{id}/refresh/` | Required | Refresh chunk content from polygon |
+| `POST` | `/api/chunk/search/` | — | Semantic search across all documents |
+| `GET` | `/api/schema/swagger/` | — | Swagger UI |
+| `GET` | `/api/schema/redoc/` | — | ReDoc UI |
 
 ---
 

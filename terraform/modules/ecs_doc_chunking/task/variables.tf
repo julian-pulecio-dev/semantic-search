@@ -29,3 +29,8 @@ variable "secret_variables" {
 variable "sqs_queue_arn" {
   type = string
 }
+
+variable "embedding_sqs_queue_arn" {
+  description = "ARN of the embedding SQS queue that this worker sends batches to"
+  type        = string
+}

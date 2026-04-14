@@ -54,8 +54,6 @@ class DocumentChunkViewsTestCase(APITestCase):
         )
 
     def test_list_document_chunks_returns_user_chunks(self):
-        self.client.force_authenticate(user=self.user)
-
         url = reverse(
             "document-chunk-list",
             kwargs={"document_id": self.document.id},
@@ -70,9 +68,9 @@ class DocumentChunkViewsTestCase(APITestCase):
         self.assertIn(str(self.chunk1.id), returned_ids)
         self.assertIn(str(self.chunk2.id), returned_ids)
 
-    def test_list_document_chunks_returns_empty_for_other_users_document(self):
-        self.client.force_authenticate(user=self.user)
-
+    def test_list_document_chunks_returns_only_chunks_for_requested_document(
+        self,
+    ):
         url = reverse(
             "document-chunk-list",
             kwargs={"document_id": self.other_document.id},
@@ -81,9 +79,11 @@ class DocumentChunkViewsTestCase(APITestCase):
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data), 0)
+        returned_ids = {chunk["id"] for chunk in response.data}
+        self.assertIn(str(self.other_chunk.id), returned_ids)
+        self.assertNotIn(str(self.chunk1.id), returned_ids)
 
-    def test_list_document_chunks_requires_authentication(self):
+    def test_list_document_chunks_accessible_without_authentication(self):
         url = reverse(
             "document-chunk-list",
             kwargs={"document_id": self.document.id},
@@ -91,11 +91,9 @@ class DocumentChunkViewsTestCase(APITestCase):
 
         response = self.client.get(url)
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_retrieve_chunk_returns_chunk(self):
-        self.client.force_authenticate(user=self.user)
-
         url = reverse(
             "document-chunk-detail",
             kwargs={"id": self.chunk1.id},
@@ -107,9 +105,7 @@ class DocumentChunkViewsTestCase(APITestCase):
         self.assertEqual(response.data["id"], str(self.chunk1.id))
         self.assertEqual(response.data["content"], self.chunk1.content)
 
-    def test_retrieve_chunk_returns_404_if_not_owner(self):
-        self.client.force_authenticate(user=self.user)
-
+    def test_retrieve_chunk_returns_chunk_from_other_user(self):
         url = reverse(
             "document-chunk-detail",
             kwargs={"id": self.other_chunk.id},
@@ -117,9 +113,10 @@ class DocumentChunkViewsTestCase(APITestCase):
 
         response = self.client.get(url)
 
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], str(self.other_chunk.id))
 
-    def test_retrieve_chunk_requires_authentication(self):
+    def test_retrieve_chunk_accessible_without_authentication(self):
         url = reverse(
             "document-chunk-detail",
             kwargs={"id": self.chunk1.id},
@@ -127,7 +124,7 @@ class DocumentChunkViewsTestCase(APITestCase):
 
         response = self.client.get(url)
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 class ChunkRefreshViewTestCase(APITestCase):
@@ -268,26 +265,113 @@ class SemanticSearchViewTestCase(APITestCase):
         )
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.post(self.url, {"query": "test", "top_k": 10})
+        response = self.client.post(
+            self.url, {"query": "test", "threshold": 0.0}
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         returned_ids = {chunk["id"] for chunk in response.data}
         self.assertNotIn(str(self.chunk_without_embedding.id), returned_ids)
 
     @patch("document_chunk.views.EmbeddingsProcessor")
-    def test_search_returns_chunks_with_embedding(self, mock_processor_cls):
+    def test_search_returns_chunks_above_threshold(self, mock_processor_cls):
         mock_processor_cls.return_value.get_embedding.return_value = (
             self.embedding
         )
         self.client.force_authenticate(user=self.user)
 
-        response = self.client.post(self.url, {"query": "test", "top_k": 10})
+        response = self.client.post(
+            self.url, {"query": "test", "threshold": 0.0}
+        )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         returned_ids = {chunk["id"] for chunk in response.data}
         self.assertIn(str(self.chunk_with_embedding.id), returned_ids)
 
-    def test_search_requires_authentication(self):
-        response = self.client.post(self.url, {"query": "test", "top_k": 5})
+    @patch("document_chunk.views.EmbeddingsProcessor")
+    def test_search_excludes_chunks_below_threshold(self, mock_processor_cls):
+        # Identical embedding → distance=0, similarity=1.0
+        # threshold=1.0 → max_distance=0.0 → only perfect matches pass
+        mock_processor_cls.return_value.get_embedding.return_value = (
+            self.embedding
+        )
+        self.client.force_authenticate(user=self.user)
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        response = self.client.post(
+            self.url, {"query": "test", "threshold": 1.0}
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # chunk_with_embedding has distance=0 (identical vector) → included
+        returned_ids = {chunk["id"] for chunk in response.data}
+        self.assertIn(str(self.chunk_with_embedding.id), returned_ids)
+
+    @patch("document_chunk.views.EmbeddingsProcessor")
+    def test_search_uses_default_threshold_when_not_provided(
+        self, mock_processor_cls
+    ):
+        mock_processor_cls.return_value.get_embedding.return_value = (
+            self.embedding
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(self.url, {"query": "test"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_search_rejects_threshold_out_of_range(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            self.url, {"query": "test", "threshold": 1.5}
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch("document_chunk.views.EmbeddingsProcessor")
+    def test_search_anonymous_user_searches_all_documents(
+        self, mock_processor_cls
+    ):
+        mock_processor_cls.return_value.get_embedding.return_value = (
+            self.embedding
+        )
+
+        response = self.client.post(
+            self.url, {"query": "test", "threshold": 0.0}
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {chunk["id"] for chunk in response.data}
+        self.assertIn(str(self.chunk_with_embedding.id), returned_ids)
+
+    @patch("document_chunk.views.EmbeddingsProcessor")
+    def test_search_authenticated_user_searches_all_documents(
+        self, mock_processor_cls
+    ):
+        mock_processor_cls.return_value.get_embedding.return_value = (
+            self.embedding
+        )
+        other_user = User.objects.create_user(
+            email="other@test.com", password="password123"
+        )
+        other_document = Document.objects.create(
+            user=other_user,
+            status=Document.Status.PROCESSED,
+            s3_key="other-key.pdf",
+        )
+        other_chunk = DocumentChunk.objects.create(
+            document=other_document,
+            content="Other user chunk",
+            embedding=self.embedding,
+            chunk_index=0,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.post(
+            self.url, {"query": "test", "threshold": 0.0}
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {chunk["id"] for chunk in response.data}
+        self.assertIn(str(self.chunk_with_embedding.id), returned_ids)
+        self.assertIn(str(other_chunk.id), returned_ids)

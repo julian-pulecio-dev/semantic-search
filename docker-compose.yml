@@ -10,7 +10,8 @@ services:
     volumes:
       - ./app:/app
     depends_on:
-      - semantic-search-db
+      semantic-search-db:
+        condition: service_healthy
     command: >
       sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
 
@@ -22,6 +23,11 @@ services:
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   pgdata:

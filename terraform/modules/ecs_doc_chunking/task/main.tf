@@ -86,9 +86,27 @@ resource "aws_iam_role_policy_attachment" "ecs_sqs_consume_attach" {
   policy_arn = aws_iam_policy.ecs_sqs_consume.arn
 }
 
+resource "aws_iam_policy" "ecs_sqs_send_embedding" {
+  name = "${var.name}-sqs-send-embedding"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sqs:SendMessage"]
+      Resource = var.embedding_sqs_queue_arn
+    }]
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "ecs_bedrock_nova_attach" {
   role       = aws_iam_role.ecs_task.name
   policy_arn = aws_iam_policy.ecs_bedrock_nova.arn
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_sqs_send_embedding_attach" {
+  role       = aws_iam_role.ecs_task.name
+  policy_arn = aws_iam_policy.ecs_sqs_send_embedding.arn
 }
 
 resource "aws_ecs_task_definition" "doc_chunking" {

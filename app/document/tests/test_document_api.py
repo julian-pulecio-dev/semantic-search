@@ -55,10 +55,10 @@ class DocumentViewsTestCase(APITestCase):
         self.assertEqual(len(response.data), 2)
 
     def test_list_all_documents_unauthenticated(self):
-        """Validate that unauthenticated requests are rejected."""
+        """Validate that unauthenticated requests can list all documents."""
 
         response = self.client.get(LIST_ALL_URL)
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_retrieve_document_any_authenticated_user(self):
         """Validate that any authenticated user can retrieve any document."""
@@ -69,10 +69,10 @@ class DocumentViewsTestCase(APITestCase):
         self.assertEqual(str(response.data["id"]), str(self.doc2.id))
 
     def test_retrieve_document_unauthenticated(self):
-        """Validate that unauthenticated requests are rejected."""
+        """Validate that unauthenticated requests can retrieve a document."""
 
         response = self.client.get(RETRIEVE_URL(self.doc1.id))
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     @patch("document.views.S3FileLoaderService.delete_file")
     def test_delete_document_admin_only(self, mock_delete):

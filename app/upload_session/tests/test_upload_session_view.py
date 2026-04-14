@@ -34,6 +34,8 @@ class CreateUploadSessionViewTest(APITestCase):
                     "policy": "test-policy",
                     "signature": "test-signature",
                 },
+                "upload_session_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "document_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
             },
             "status": "PENDING",
             "expires_at": "2024-01-01T00:00:00Z",

@@ -58,6 +58,16 @@ variable "sqs_queue_name" {
   type        = string
 }
 
+variable "embedding_sqs_queue_arn" {
+  description = "ARN of the embedding SQS queue to send batches to"
+  type        = string
+}
+
+variable "embedding_sqs_queue_url" {
+  description = "URL of the embedding SQS queue to send batches to"
+  type        = string
+}
+
 variable "max_capacity" {
   description = "Maximum number of ECS tasks the service can scale out to"
   type        = number

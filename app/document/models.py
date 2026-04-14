@@ -29,6 +29,10 @@ class Document(models.Model):
         blank=False,
     )
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    embedding_batches_total = models.PositiveIntegerField(
+        null=True, blank=True, default=None
+    )
+    embedding_batches_done = models.PositiveIntegerField(default=0)
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="documents"
     )
