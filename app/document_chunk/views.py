@@ -1,4 +1,12 @@
-from django.db.models import Case, ExpressionWrapper, FloatField, F, Q, Value, When
+from django.db.models import (
+    Case,
+    ExpressionWrapper,
+    FloatField,
+    F,
+    Q,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated

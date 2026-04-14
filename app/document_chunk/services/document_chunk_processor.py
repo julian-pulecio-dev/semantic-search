@@ -121,7 +121,8 @@ class DocumentChunkProcessor:
     Responsibilities
     ----------------
     1. Extract text and word-level coordinates from the PDF stored in S3.
-    2. Split the full document text into context-aware chunks with bounding-polygon data.
+    2. Split the full document text into context-aware chunks with bounding-polygon
+       data.
     3. Persist all chunks to the database (all embeddings=None at this stage).
     4. Set document.embedding_batches_total so the embedding worker knows
        when the document is fully processed.

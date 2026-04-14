@@ -3,7 +3,9 @@ import logging
 from typing import List
 
 from document_chunk.models import DocumentChunk
-from document_chunk.services.document_chunk_processor import _extract_section_context
+from document_chunk.services.document_chunk_processor import (
+    _extract_section_context,
+)
 from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from document_chunk.services.pdf_text_extractor import PDFTextExtractor
 from document_chunk.services.exceptions.document_chunk_exceptions import (
@@ -109,7 +111,11 @@ class ChunkRefreshService:
 
     @staticmethod
     def _doc_context_text(chunk: DocumentChunk) -> str:
-        filename = os.path.basename(chunk.document.s3_key or "").replace("_", " ").replace("-", " ")
+        filename = (
+            os.path.basename(chunk.document.s3_key or "")
+            .replace("_", " ")
+            .replace("-", " ")
+        )
         name = os.path.splitext(filename)[0].strip()
         return f"Documento legal: {name}" if name else "Documento legal"
 

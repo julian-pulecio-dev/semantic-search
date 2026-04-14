@@ -21,7 +21,11 @@ _EMBED_FIELDS = ["embedding", "embedding_title", "embedding_doc"]
 
 def _doc_context_text(document: Document) -> str:
     """Builds a document-level description string used for embedding_doc."""
-    filename = os.path.basename(document.s3_key or "").replace("_", " ").replace("-", " ")
+    filename = (
+        os.path.basename(document.s3_key or "")
+        .replace("_", " ")
+        .replace("-", " ")
+    )
     name = os.path.splitext(filename)[0].strip()
     return f"Documento legal: {name}" if name else "Documento legal"
 
@@ -76,7 +80,9 @@ class ChunkEmbeddingService:
         try:
             document = Document.objects.get(id=document_id)
         except Document.DoesNotExist:
-            logger.error("Document %s not found — skipping embedding batch", document_id)
+            logger.error(
+                "Document %s not found — skipping embedding batch", document_id
+            )
             self._finalize_document(document_id)
             return
 
@@ -99,12 +105,14 @@ class ChunkEmbeddingService:
 
         # Build three text lists (chunk / title / doc) and flatten into one batch.
         chunk_texts = [
-            f"{c.context_prefix}: {c.content}" if c.context_prefix else c.content
+            (
+                f"{c.context_prefix}: {c.content}"
+                if c.context_prefix
+                else c.content
+            )
             for c in chunks
         ]
-        title_texts = [
-            c.context_prefix or c.content[:200] for c in chunks
-        ]
+        title_texts = [c.context_prefix or c.content[:200] for c in chunks]
         doc_texts = [doc_text] * n
 
         all_texts = chunk_texts + title_texts + doc_texts
@@ -113,14 +121,17 @@ class ChunkEmbeddingService:
             result = self.embedding_processor.embed_batch(all_texts)
         except (EmbeddingError, EmbeddingValidationError, RuntimeError) as e:
             logger.error(
-                "Embedding batch failed for document %s (%d chunks, embeddings left null): %s",
+                "Embedding batch failed for document %s "
+                "(%d chunks, embeddings left null): %s",
                 document_id,
                 n,
                 e,
             )
             return
 
-        embeddings = result.embeddings  # List[Optional[List[float]]], length = 3*n
+        embeddings = (
+            result.embeddings
+        )  # List[Optional[List[float]]], length = 3*n
 
         for i, chunk in enumerate(chunks):
             chunk.embedding = embeddings[i]
