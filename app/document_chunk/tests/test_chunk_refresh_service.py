@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from document.models import Document
 from document_chunk.models import DocumentChunk
 from document_chunk.services.chunk_refresh_service import ChunkRefreshService
+from document_chunk.services.embeddings_processor import BatchEmbeddingResult
 from document_chunk.services.exceptions.document_chunk_exceptions import (
     DocumentPersistenceError,
 )
@@ -78,7 +79,11 @@ class TestChunkRefreshService(TestCase):
             }
         ]
         self.mock_pdf_extractor.extract.return_value = self.pages
-        self.mock_embedding_processor.get_embedding.return_value = [0.5] * 1024
+        self.mock_embedding_processor.embed_batch.return_value = BatchEmbeddingResult(
+            embeddings=[[0.5] * 1024, [0.5] * 1024, [0.5] * 1024],
+            errors={},
+            throttle_count=0,
+        )
 
     # ------------------------------------------------------------------
     # refresh()
@@ -126,9 +131,11 @@ class TestChunkRefreshService(TestCase):
 
         self.service.refresh(self.chunk, polygons)
 
-        self.mock_embedding_processor.get_embedding.assert_called_once_with(
-            "hello world"
-        )
+        self.mock_embedding_processor.embed_batch.assert_called_once()
+        texts = self.mock_embedding_processor.embed_batch.call_args[0][0]
+        # chunk_text, title_text, doc_text — all three derived from "hello world"
+        self.assertEqual(len(texts), 3)
+        self.assertIn("hello world", texts[0])
 
     def test_refresh_raises_value_error_when_polygons_empty(self):
         with self.assertRaises(ValueError):

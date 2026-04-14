@@ -12,6 +12,17 @@ from document_chunk.services.exceptions.embedding_exceptions import (
     EmbeddingError,
 )
 
+
+def _batch_result(n, base=0.1):
+    """
+    Build a BatchEmbeddingResult for n chunks with 3*n embeddings
+    (chunk / title / doc), each filled with a distinct float value.
+    """
+    embeddings = [
+        [round(base + i * 0.1, 1)] * 1024 for i in range(3 * n)
+    ]
+    return BatchEmbeddingResult(embeddings=embeddings, errors={}, throttle_count=0)
+
 User = get_user_model()
 
 
@@ -48,11 +59,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
     # --- embedding attachment ---
 
     def test_attaches_embeddings_to_chunks(self):
-        self.mock_processor.embed_batch.return_value = BatchEmbeddingResult(
-            embeddings=[[0.1] * 1024, [0.2] * 1024],
-            errors={},
-            throttle_count=0,
-        )
+        self.mock_processor.embed_batch.return_value = _batch_result(2)
 
         self.service.process_batch(str(self.document.id), self._chunk_ids())
 
@@ -75,7 +82,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
 
     def test_leaves_embeddings_null_when_raise_on_errors_raises(self):
         self.mock_processor.embed_batch.return_value = BatchEmbeddingResult(
-            embeddings=[None, None],
+            embeddings=[None] * 6,
             errors={0: EmbeddingError("err"), 1: EmbeddingError("err")},
             throttle_count=0,
         )
@@ -88,11 +95,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
     # --- document finalisation ---
 
     def test_increments_embedding_batches_done(self):
-        self.mock_processor.embed_batch.return_value = BatchEmbeddingResult(
-            embeddings=[[0.1] * 1024, [0.2] * 1024],
-            errors={},
-            throttle_count=0,
-        )
+        self.mock_processor.embed_batch.return_value = _batch_result(2)
 
         self.service.process_batch(str(self.document.id), self._chunk_ids())
 
@@ -100,11 +103,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         self.assertEqual(self.document.embedding_batches_done, 1)
 
     def test_marks_document_processed_when_all_batches_done_and_no_nulls(self):
-        self.mock_processor.embed_batch.return_value = BatchEmbeddingResult(
-            embeddings=[[0.1] * 1024, [0.2] * 1024],
-            errors={},
-            throttle_count=0,
-        )
+        self.mock_processor.embed_batch.return_value = _batch_result(2)
 
         self.service.process_batch(str(self.document.id), self._chunk_ids())
 
@@ -125,11 +124,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         self.document.embedding_batches_total = 3
         self.document.save(update_fields=["embedding_batches_total"])
 
-        self.mock_processor.embed_batch.return_value = BatchEmbeddingResult(
-            embeddings=[[0.1] * 1024, [0.2] * 1024],
-            errors={},
-            throttle_count=0,
-        )
+        self.mock_processor.embed_batch.return_value = _batch_result(2)
 
         self.service.process_batch(str(self.document.id), self._chunk_ids())
 
@@ -142,11 +137,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         self.document.embedding_batches_total = None
         self.document.save(update_fields=["embedding_batches_total"])
 
-        self.mock_processor.embed_batch.return_value = BatchEmbeddingResult(
-            embeddings=[[0.1] * 1024, [0.2] * 1024],
-            errors={},
-            throttle_count=0,
-        )
+        self.mock_processor.embed_batch.return_value = _batch_result(2)
 
         self.service.process_batch(str(self.document.id), self._chunk_ids())
 
