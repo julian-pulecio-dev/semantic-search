@@ -9,10 +9,12 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
             "id",
             "document",
             "content",
+            "section_type",
+            "section_title",
+            "context_prefix",
             "chunk_index",
             "bounding_polygons",
             "created_at",
-            "embedding",
         ]
         read_only_fields = fields
 
@@ -26,6 +28,4 @@ class ChunkRefreshSerializer(serializers.Serializer):
 
 class SemanticSearchSerializer(serializers.Serializer):
     query = serializers.CharField()
-    threshold = serializers.FloatField(
-        min_value=0.0, max_value=1.0, default=0.8
-    )
+    k = serializers.IntegerField(min_value=1, max_value=100, default=10)

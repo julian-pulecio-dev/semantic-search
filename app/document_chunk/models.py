@@ -21,7 +21,26 @@ class DocumentChunk(models.Model):
 
     content = models.TextField()
 
+    # Contextual metadata added during chunking
+    section_type = models.CharField(max_length=100, null=True, blank=True)
+    section_title = models.CharField(max_length=500, null=True, blank=True)
+    context_prefix = models.TextField(null=True, blank=True)
+
+    # Multi-level embeddings
+    # embedding       → full contextual chunk  ([section_type] section_title: content)
+    # embedding_title → section header          ([section_type] section_title)
+    # embedding_doc   → document-level context  (document name / identifier)
     embedding = VectorField(
+        dimensions=1024,
+        null=True,
+        blank=True,
+    )
+    embedding_title = VectorField(
+        dimensions=1024,
+        null=True,
+        blank=True,
+    )
+    embedding_doc = VectorField(
         dimensions=1024,
         null=True,
         blank=True,
@@ -51,6 +70,20 @@ class DocumentChunk(models.Model):
             HnswIndex(
                 name="chunk_embedding_hnsw",
                 fields=["embedding"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+            HnswIndex(
+                name="chunk_embedding_title_hnsw",
+                fields=["embedding_title"],
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+            HnswIndex(
+                name="chunk_embedding_doc_hnsw",
+                fields=["embedding_doc"],
                 m=16,
                 ef_construction=64,
                 opclasses=["vector_cosine_ops"],

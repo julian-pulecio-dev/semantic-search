@@ -2,7 +2,7 @@ import os
 import logging
 
 from dataclasses import dataclass, field
-from typing import ClassVar, Optional, List
+from typing import ClassVar, Optional, List, Tuple
 
 from document.models import Document
 from document_chunk.models import DocumentChunk
@@ -26,18 +26,75 @@ __all__ = [
     "Chunk",
 ]
 
+# Maps lowercase keywords found in chunk text to a canonical section type label.
+_SECTION_KEYWORDS: List[Tuple[str, str]] = [
+    ("audiencia", "Audiencia"),
+    ("testimonio", "Testimonio"),
+    ("testigo", "Testimonio"),
+    ("sentencia", "Sentencia"),
+    ("resolución", "Resolución"),
+    ("resolucion", "Resolución"),
+    ("apelación", "Apelación"),
+    ("apelacion", "Apelación"),
+    ("demanda", "Demanda"),
+    ("demandante", "Demanda"),
+    ("demandado", "Demanda"),
+    ("contrato", "Contrato"),
+    ("recurso", "Recurso"),
+    ("providencia", "Providencia"),
+    ("decreto", "Decreto"),
+    ("auto", "Auto"),
+    ("juzgado", "Juzgado"),
+    ("tribunal", "Tribunal"),
+    ("acuerdo", "Acuerdo"),
+    ("denuncia", "Denuncia"),
+    ("querella", "Querella"),
+]
+
+
+def _extract_section_context(text: str) -> Tuple[str, str]:
+    """
+    Infers a section type and title from the chunk text.
+
+    Returns:
+        (section_type, section_title)
+        section_type  — canonical label (e.g. "Audiencia", "Sentencia")
+        section_title — first meaningful line of the chunk (≤ 200 chars)
+    """
+    lower = text.lower()
+    section_type = "Legal"
+    for keyword, label in _SECTION_KEYWORDS:
+        if keyword in lower:
+            section_type = label
+            break
+
+    # Use the first non-empty line as the title; fall back to the first 200 chars.
+    first_line = next(
+        (ln.strip() for ln in text.splitlines() if ln.strip()), ""
+    )
+    section_title = (first_line or text)[:200]
+
+    return section_type, section_title
+
 
 @dataclass(frozen=True)
 class Chunk:
     """
     Immutable domain object representing a single text chunk.
-    Embeddings are no longer generated here — they are attached by
-    the dedicated embedding worker after chunks are persisted.
+
+    Embeddings are not generated here — they are attached by the dedicated
+    embedding worker after chunks are persisted.
+
+    context_prefix  — the contextual header prepended when building the chunk
+                      embedding: "[section_type] section_title"
     """
 
     content: str
     page_number: int
     document_id: int
+    section_type: Optional[str] = field(default=None)
+    section_title: Optional[str] = field(default=None)
+    context_prefix: Optional[str] = field(default=None)
     embedding: Optional[list] = field(default=None, hash=False, compare=False)
     bounding_polygons: Optional[list] = field(
         default=None, hash=False, compare=False
@@ -48,6 +105,9 @@ class Chunk:
             content=self.content,
             page_number=self.page_number,
             document_id=self.document_id,
+            section_type=self.section_type,
+            section_title=self.section_title,
+            context_prefix=self.context_prefix,
             embedding=embedding,
             bounding_polygons=self.bounding_polygons,
         )
@@ -61,13 +121,18 @@ class DocumentChunkProcessor:
     Responsibilities
     ----------------
     1. Extract text and word-level coordinates from the PDF stored in S3.
-    2. Split the full document text into chunks with bounding-polygon data.
-    3. Persist all chunks to the database (embedding=None at this stage).
+    2. Split the full document text into context-aware chunks with bounding-polygon data.
+    3. Persist all chunks to the database (all embeddings=None at this stage).
     4. Set document.embedding_batches_total so the embedding worker knows
        when the document is fully processed.
 
-    The embedding stage is handled by the separate EmbeddingWorker, which
-    consumes batches of chunk IDs from the embedding SQS queue.
+    Each chunk is enriched with:
+    - section_type    — inferred section category (e.g. "Audiencia", "Sentencia")
+    - section_title   — first meaningful line of the chunk
+    - context_prefix  — "[section_type] section_title", used as the embedding header
+
+    The embedding stage (three embeddings per chunk) is handled by the separate
+    EmbeddingWorker, which consumes batches of chunk IDs from the embedding SQS queue.
 
     Document status transitions managed here
     -----------------------------------------
@@ -168,10 +233,10 @@ class DocumentChunkProcessor:
 
     def _text_to_chunks(self, pages_data: List[dict]) -> List[Chunk]:
         """
-        Converts document text into Chunk objects using the configured splitter.
+        Converts document text into context-aware Chunk objects.
 
-        The full document text is concatenated from all pages before splitting
-        so that chunk boundaries respect the natural document flow across pages.
+        Each chunk is annotated with section_type, section_title, and
+        context_prefix so the embedding worker can generate targeted embeddings.
         """
         full_text = "\n\n".join(page["text"] for page in pages_data)
         raw_chunks = self.splitter.split_text(full_text)
@@ -190,11 +255,17 @@ class DocumentChunkProcessor:
                 else pages_data[0]["page_number"]
             )
 
+            section_type, section_title = _extract_section_context(text)
+            context_prefix = f"[{section_type}] {section_title}"
+
             chunks.append(
                 Chunk(
                     content=text,
                     page_number=page_number,
                     document_id=self.document.id,
+                    section_type=section_type,
+                    section_title=section_title,
+                    context_prefix=context_prefix,
                     bounding_polygons=[
                         {
                             "page_number": p.page_number,
@@ -212,8 +283,8 @@ class DocumentChunkProcessor:
         """
         Persists all chunks to the database and returns their IDs.
 
-        Chunks are saved without embeddings (embedding=None). The embedding
-        worker will populate these fields in a subsequent stage.
+        Chunks are saved without embeddings (all embedding fields = None).
+        The embedding worker will populate these fields in a subsequent stage.
 
         Returns:
             List of chunk ID strings (UUIDs) in chunk_index order.
@@ -225,7 +296,12 @@ class DocumentChunkProcessor:
                 DocumentChunk(
                     document=self.document,
                     content=chunk.content,
+                    section_type=chunk.section_type,
+                    section_title=chunk.section_title,
+                    context_prefix=chunk.context_prefix,
                     embedding=None,
+                    embedding_title=None,
+                    embedding_doc=None,
                     chunk_index=index,
                     bounding_polygons=chunk.bounding_polygons,
                 )

@@ -3,6 +3,7 @@ import logging
 from typing import List
 
 from document_chunk.models import DocumentChunk
+from document_chunk.services.document_chunk_processor import _extract_section_context
 from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from document_chunk.services.pdf_text_extractor import PDFTextExtractor
 from document_chunk.services.exceptions.document_chunk_exceptions import (
@@ -14,17 +15,27 @@ logger = logging.getLogger(__name__)
 
 class ChunkRefreshService:
     """
-    Refreshes a chunk's content and embedding based on new bounding polygons.
+    Refreshes a chunk's content and all embeddings based on new bounding polygons.
 
     Pipeline:
       1. Re-extract the source PDF from S3.
       2. Match the polygon regions against the word-level coordinates on each page
          to reconstruct the text covered by the new polygons.
-      3. Regenerate the embedding for the new text.
-      4. Persist the updated content, embedding, and bounding_polygons.
+      3. Re-infer section_type, section_title, and context_prefix from the new text.
+      4. Regenerate all three embeddings (chunk, title, doc).
+      5. Persist the updated fields atomically.
     """
 
-    _REFRESH_FIELDS = ["content", "embedding", "bounding_polygons"]
+    _REFRESH_FIELDS = [
+        "content",
+        "section_type",
+        "section_title",
+        "context_prefix",
+        "embedding",
+        "embedding_title",
+        "embedding_doc",
+        "bounding_polygons",
+    ]
 
     def __init__(
         self,
@@ -38,7 +49,7 @@ class ChunkRefreshService:
         self, chunk: DocumentChunk, bounding_polygons: list
     ) -> DocumentChunk:
         """
-        Refreshes the chunk content and embedding from the given bounding polygons.
+        Refreshes the chunk content, context metadata, and all embeddings.
 
         Args:
             chunk: The DocumentChunk instance to refresh.
@@ -70,11 +81,37 @@ class ChunkRefreshService:
             chunk.id,
         )
 
-        embedding = self.embedding_processor.get_embedding(new_text)
+        section_type, section_title = _extract_section_context(new_text)
+        context_prefix = f"[{section_type}] {section_title}"
 
-        self._save(chunk, new_text, embedding, bounding_polygons)
+        chunk_text = f"{context_prefix}: {new_text}"
+        title_text = context_prefix
+        doc_text = self._doc_context_text(chunk)
+
+        result = self.embedding_processor.embed_batch(
+            [chunk_text, title_text, doc_text]
+        )
+        embeddings = result.embeddings
+
+        self._save(
+            chunk,
+            content=new_text,
+            section_type=section_type,
+            section_title=section_title,
+            context_prefix=context_prefix,
+            embedding=embeddings[0],
+            embedding_title=embeddings[1],
+            embedding_doc=embeddings[2],
+            bounding_polygons=bounding_polygons,
+        )
 
         return chunk
+
+    @staticmethod
+    def _doc_context_text(chunk: DocumentChunk) -> str:
+        filename = os.path.basename(chunk.document.s3_key or "").replace("_", " ").replace("-", " ")
+        name = os.path.splitext(filename)[0].strip()
+        return f"Documento legal: {name}" if name else "Documento legal"
 
     def _extract_text_from_polygons(
         self, bounding_polygons: list, pages: List[dict]
@@ -82,17 +119,6 @@ class ChunkRefreshService:
         """
         Reconstructs text from pages by collecting words whose bounding boxes
         fall within the polygon regions.
-
-        For each polygon entry (page_number + points), words on the matching page
-        whose centres lie inside the polygon bounding box are collected in reading
-        order and joined into a single string.
-
-        Args:
-            bounding_polygons: List of dicts with 'page_number' and 'points'.
-            pages: Page dicts from PDFTextExtractor, each with 'page_number'
-            and 'words'.
-        Returns:
-            Reconstructed text string.
         """
         pages_by_number = {p["page_number"]: p for p in pages}
         parts = []
@@ -117,8 +143,6 @@ class ChunkRefreshService:
                 and y_min <= (w["top"] + w["bottom"]) / 2 <= y_max
             ]
 
-            # Group words into lines using a tolerance band instead of rounding,
-            # to avoid mis-sorting words on lines that straddle integer boundaries.
             matched.sort(key=lambda w: (w["top"] // 5, w["x0"]))
 
             if matched:
@@ -131,11 +155,21 @@ class ChunkRefreshService:
         self,
         chunk: DocumentChunk,
         content: str,
+        section_type: str,
+        section_title: str,
+        context_prefix: str,
         embedding: list,
+        embedding_title: list,
+        embedding_doc: list,
         bounding_polygons: list,
     ) -> None:
         chunk.content = content
+        chunk.section_type = section_type
+        chunk.section_title = section_title
+        chunk.context_prefix = context_prefix
         chunk.embedding = embedding
+        chunk.embedding_title = embedding_title
+        chunk.embedding_doc = embedding_doc
         chunk.bounding_polygons = bounding_polygons
         chunk.save(update_fields=self._REFRESH_FIELDS)
         logger.info("Chunk %s refreshed and saved", chunk.id)

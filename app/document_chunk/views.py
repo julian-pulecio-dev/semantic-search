@@ -1,3 +1,5 @@
+from django.db.models import Case, ExpressionWrapper, FloatField, F, Q, Value, When
+from django.db.models.functions import Coalesce
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -62,6 +64,23 @@ class ChunkRefreshView(APIView):
 
 
 class SemanticSearchView(APIView):
+    """
+    Hybrid semantic search over document chunks.
+
+    Strategy
+    --------
+    1. Embed the query with the same model used at ingestion time.
+    2. Annotate each chunk with three cosine distances:
+         d_chunk  — distance to the full contextual chunk embedding  (weight 0.5)
+         d_title  — distance to the section-title embedding          (weight 0.3)
+         d_doc    — distance to the document-level embedding         (weight 0.2)
+       Null embeddings fall back to the worst-case distance (1.0).
+    3. Apply an optional keyword boost: chunks whose content contains any
+       significant query term get a −0.05 bonus on the combined score
+       (lower distance = better match).
+    4. Return the top-k chunks ordered by the combined score.
+    """
+
     permission_classes = []
 
     @extend_schema(
@@ -72,23 +91,60 @@ class SemanticSearchView(APIView):
         serializer = SemanticSearchSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        query = serializer.validated_data["query"]
-        threshold = serializer.validated_data["threshold"]
+        query: str = serializer.validated_data["query"]
+        k: int = serializer.validated_data["k"]
 
-        embedding = EmbeddingsProcessor().get_embedding(query)
+        query_embedding = EmbeddingsProcessor().get_embedding(query)
 
-        # CosineDistance ∈ [0, 2]; similarity = 1 − distance.
-        # similarity ≥ threshold  ↔  distance ≤ 1 − threshold
-        max_distance = 1 - threshold
+        keyword_boost = self._keyword_boost(query)
 
         chunks = (
             DocumentChunk.objects.filter(embedding__isnull=False)
-            .annotate(distance=CosineDistance("embedding", embedding))
-            .filter(distance__lte=max_distance)
-            .order_by("distance")
+            .annotate(
+                d_chunk=CosineDistance("embedding", query_embedding),
+                d_title=Coalesce(
+                    CosineDistance("embedding_title", query_embedding),
+                    Value(1.0),
+                ),
+                d_doc=Coalesce(
+                    CosineDistance("embedding_doc", query_embedding),
+                    Value(1.0),
+                ),
+            )
+            .annotate(
+                score=ExpressionWrapper(
+                    F("d_chunk") * 0.5
+                    + F("d_title") * 0.3
+                    + F("d_doc") * 0.2
+                    + keyword_boost,
+                    output_field=FloatField(),
+                )
+            )
+            .order_by("score")[:k]
         )
 
         return Response(
             DocumentChunkSerializer(chunks, many=True).data,
             status=status.HTTP_200_OK,
+        )
+
+    @staticmethod
+    def _keyword_boost(query: str):
+        """
+        Returns a Case expression that subtracts 0.05 from the score when
+        the chunk content contains any meaningful term from the query.
+        A lower score means a better match (distance semantics).
+        """
+        terms = [t.lower() for t in query.split() if len(t) > 3]
+        if not terms:
+            return Value(0.0, output_field=FloatField())
+
+        keyword_q = Q()
+        for term in terms:
+            keyword_q |= Q(content__icontains=term)
+
+        return Case(
+            When(keyword_q, then=Value(-0.05)),
+            default=Value(0.0),
+            output_field=FloatField(),
         )
