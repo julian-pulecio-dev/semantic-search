@@ -56,7 +56,7 @@ class ChunkRefreshView(APIView):
         request=ChunkRefreshSerializer,
         responses={200: DocumentChunkSerializer},
     )
-    def patch(self, request, page_id, pk):
+    def patch(self, request, doc_id, page_id, pk):
         chunk = generics.get_object_or_404(
             DocumentChunk, id=pk, page_id=page_id
         )

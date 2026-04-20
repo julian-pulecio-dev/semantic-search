@@ -120,7 +120,7 @@ class TestDocumentChunkingHandlerChunkAndDispatch(SimpleTestCase):
         mock_boto3.return_value = mock_sqs
 
         with patch.dict(
-            os.environ, {"EMBEDDING_SQS_QUEUE_URL": "http://sqs/embed"}
+            os.environ, {"SQS_QUEUE_URL": "http://sqs/embed"}
         ):
             self.handler._chunk_and_dispatch("docs/test.pdf")
 
@@ -152,7 +152,7 @@ class TestDocumentChunkingHandlerChunkAndDispatch(SimpleTestCase):
         mock_boto3.return_value = MagicMock()
 
         with patch.dict(
-            os.environ, {"EMBEDDING_SQS_QUEUE_URL": "http://sqs/embed"}
+            os.environ, {"SQS_QUEUE_URL": "http://sqs/embed"}
         ):
             self.handler._chunk_and_dispatch("docs/test.pdf")
 

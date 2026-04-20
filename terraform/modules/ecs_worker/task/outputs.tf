@@ -1,5 +1,5 @@
 output "arn" {
-  value = aws_ecs_task_definition.doc_chunking.arn
+  value = aws_ecs_task_definition.page_slicing.arn
 }
 
 output "task_role_arn" {

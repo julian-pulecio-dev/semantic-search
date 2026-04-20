@@ -8,7 +8,6 @@ from document.models import Document
 from document_chunk.services.document_chunk_processor import (
     Chunk,
     DocumentChunkProcessor,
-    DocumentPersistenceError,
 )
 from document_chunk.services.chunk_bounding_polygon import PagePolygon
 

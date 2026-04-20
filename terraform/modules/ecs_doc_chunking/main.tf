@@ -18,6 +18,7 @@ module "ecs_task_definition" {
   sqs_queue_arn           = var.sqs_queue_arn
   
   environment_variables = [
+    { name = "DJANGO_SETTINGS_MODULE", value = "app.settings.local" },
     { name = "SQS_QUEUE_URL",          value = var.sqs_queue_url },
     { name = "DB_HOST",                value = var.db_host },
     { name = "DB_NAME",                value = var.db_name },

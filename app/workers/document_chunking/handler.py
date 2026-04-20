@@ -87,7 +87,7 @@ class DocumentChunkingHandler(Handler):
         document.number_of_pages = len(batches)
         document.save(update_fields=["number_of_pages"])
 
-        embedding_queue_url = os.environ["EMBEDDING_SQS_QUEUE_URL"]
+        embedding_queue_url = os.environ["SQS_QUEUE_URL"]
         sqs = self._get_sqs_client()
 
         for batch in batches:

@@ -2,7 +2,6 @@ import os
 import logging
 import signal
 from typing import Type
-from workers.handler import Handler
 
 
 class WorkerRunner:
@@ -16,6 +15,12 @@ class WorkerRunner:
         - signal handling for graceful shutdown
         - worker initialization and execution
     """
+    def __init__(self):
+        self.logger = self._setup_logging()
+        self.logger.info("Initializing logging...")
+
+        self.logger.info("Initializing Django...")
+        self._setup_django()
 
     def _setup_logging(self) -> logging.Logger:
         """
@@ -72,7 +77,7 @@ class WorkerRunner:
         except ValueError:
             raise RuntimeError(f"{name} must be an integer, got: {raw}")
 
-    def run(self, processor_cls: Type[Handler]):
+    def run(self, processor_cls: Type):
         """
         Run the worker with the specified Handler class for
         processing messages.
@@ -82,11 +87,6 @@ class WorkerRunner:
         Returns:
             None
         """
-        logger = self._setup_logging()
-
-        logger.info("Initializing Django...")
-        self._setup_django()
-
         from workers.worker_handler import WorkerHandler
 
         queue_url = os.environ.get("SQS_QUEUE_URL")
@@ -95,7 +95,7 @@ class WorkerRunner:
 
         visibility_timeout = self._get_int_env("VISIBILITY_TIMEOUT", 300)
 
-        logger.info(
+        self.logger.info(
             f"Starting worker | \
               queue={queue_url} | \
               visibility_timeout={visibility_timeout} | \
@@ -109,7 +109,7 @@ class WorkerRunner:
         )
 
         def _handle_shutdown(signum, frame):
-            logger.info(f"Signal {signum} received. Stopping worker...")
+            self.logger.info(f"Signal {signum} received. Stopping worker...")
             worker.stop()
 
         signal.signal(signal.SIGTERM, _handle_shutdown)
@@ -118,7 +118,7 @@ class WorkerRunner:
         try:
             worker.run()
         except Exception:
-            logger.exception("Worker crashed")
+            self.logger.exception("Worker crashed")
             raise
         finally:
-            logger.info("Worker stopped")
+            self.logger.info("Worker stopped")

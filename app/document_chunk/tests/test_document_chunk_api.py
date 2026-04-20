@@ -12,18 +12,18 @@ User = get_user_model()
 
 
 def CHUNK_LIST_URL(doc_id, page_id):
-    return reverse("chunk-list", kwargs={"doc_id": doc_id, "page_id": page_id})
+    return reverse("document:chunk-list", kwargs={"doc_id": doc_id, "page_id": page_id})
 
 
 def CHUNK_DETAIL_URL(doc_id, page_id, pk):
     return reverse(
-        "chunk-detail", kwargs={"doc_id": doc_id, "page_id": page_id, "pk": pk}
+        "document:chunk-detail", kwargs={"doc_id": doc_id, "page_id": page_id, "pk": pk}
     )
 
 
 def CHUNK_REFRESH_URL(doc_id, page_id, pk):
     return reverse(
-        "chunk-refresh",
+        "document:chunk-refresh",
         kwargs={"doc_id": doc_id, "page_id": page_id, "pk": pk},
     )
 
