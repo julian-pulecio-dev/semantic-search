@@ -7,6 +7,7 @@ from typing import Optional
 
 from document.models import Document
 from document_chunk.models import DocumentChunk
+from document_page.models import DocumentPage
 from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from document_chunk.services.exceptions.embedding_exceptions import (
     EmbeddingError,
@@ -34,11 +35,12 @@ class ChunkEmbeddingService:
     Processes a single embedding batch received from SQS.
 
     For each chunk in the batch:
-      1. Persist the chunk (content, metadata, bounding_polygons from message).
-      2. Attach three embeddings (chunk / title / doc). On failure, logs the
+      1. Create a DocumentPage to group the batch.
+      2. Persist the chunk (content, metadata, bounding_polygons from message).
+      3. Attach three embeddings (chunk / title / doc). On failure, logs the
          error and leaves the embedding fields as None.
 
-    After all chunks have been processed, advances the per-document batch
+    After all chunks have been processed, advances the per-document page
     counter so the document status can be finalised once every batch is done.
 
     Embedding strategy per chunk
@@ -69,11 +71,16 @@ class ChunkEmbeddingService:
             )
             return
 
+        page = DocumentPage.objects.create(
+            document=document,
+            number_of_chunks=len(chunks_data),
+        )
+
         for chunk_data in chunks_data:
-            db_chunk = self._persist_chunk(document, chunk_data)
+            db_chunk = self._persist_chunk(page, chunk_data)
             if db_chunk is None:
                 continue
-            self._attach_embeddings(db_chunk)
+            self._attach_embeddings(db_chunk, document)
 
         self._finalize_document(document_id)
 
@@ -82,12 +89,12 @@ class ChunkEmbeddingService:
     # ------------------------------------------------------------------
 
     def _persist_chunk(
-        self, document: Document, chunk_data: dict
+        self, page: DocumentPage, chunk_data: dict
     ) -> Optional[DocumentChunk]:
         """Creates and saves a DocumentChunk with polygon data but no embeddings."""
         try:
             return DocumentChunk.objects.create(
-                document=document,
+                page=page,
                 content=chunk_data["content"],
                 chunk_index=chunk_data["chunk_index"],
                 section_type=chunk_data.get("section_type"),
@@ -99,17 +106,19 @@ class ChunkEmbeddingService:
             logger.error(
                 "Failed to persist chunk index=%s for document %s: %s",
                 chunk_data.get("chunk_index"),
-                document.id,
+                page.document_id,
                 e,
             )
             return None
 
-    def _attach_embeddings(self, chunk: DocumentChunk) -> None:
+    def _attach_embeddings(
+        self, chunk: DocumentChunk, document: Document
+    ) -> None:
         """
         Generates three embeddings for the chunk and saves them.
         Logs and leaves fields as None on any failure.
         """
-        doc_text = _doc_context_text(chunk.document)
+        doc_text = _doc_context_text(document)
         chunk_text = (
             f"{chunk.context_prefix}: {chunk.content}"
             if chunk.context_prefix
@@ -133,7 +142,7 @@ class ChunkEmbeddingService:
                 logger.warning(
                     "Embedding errors for chunk %s (document %s): %s",
                     chunk.id,
-                    chunk.document_id,
+                    document.id,
                     result.errors,
                 )
         except (
@@ -145,19 +154,19 @@ class ChunkEmbeddingService:
             logger.error(
                 "Failed to embed chunk %s (document %s): %s",
                 chunk.id,
-                chunk.document_id,
+                document.id,
                 e,
             )
 
     def _finalize_document(self, document_id: str) -> None:
         """
-        Atomically increments embedding_batches_done. When the counter
-        reaches embedding_batches_total the document status is set to
+        Atomically increments number_of_pages_processed. When the counter
+        reaches number_of_pages the document status is set to
         PROCESSED (all chunk embeddings present) or INCOMPLETED (some null).
         """
         with transaction.atomic():
             updated = Document.objects.filter(id=document_id).update(
-                embedding_batches_done=F("embedding_batches_done") + 1
+                number_of_pages_processed=F("number_of_pages_processed") + 1
             )
             if not updated:
                 logger.error(
@@ -168,17 +177,17 @@ class ChunkEmbeddingService:
 
             document = Document.objects.get(id=document_id)
 
-            if document.embedding_batches_total is None:
+            if document.number_of_pages is None:
                 return
 
             if (
-                document.embedding_batches_done
-                < document.embedding_batches_total
+                document.number_of_pages_processed
+                < document.number_of_pages
             ):
                 return
 
             has_null = DocumentChunk.objects.filter(
-                document=document, embedding__isnull=True
+                page__document=document, embedding__isnull=True
             ).exists()
 
             new_status = (
@@ -189,9 +198,9 @@ class ChunkEmbeddingService:
             Document.objects.filter(id=document_id).update(status=new_status)
 
             logger.info(
-                "Document %s finalised with status %s (%d/%d batches done)",
+                "Document %s finalised with status %s (%d/%d pages done)",
                 document_id,
                 new_status,
-                document.embedding_batches_done,
-                document.embedding_batches_total,
+                document.number_of_pages_processed,
+                document.number_of_pages,
             )

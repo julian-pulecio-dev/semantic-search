@@ -82,10 +82,10 @@ class DocumentChunkingHandler(Handler):
             )
             return
 
-        # Set embedding_batches_total before dispatching so the embedding
-        # worker can finalise document status as soon as the last batch done.
-        document.embedding_batches_total = len(batches)
-        document.save(update_fields=["embedding_batches_total"])
+        # Set number_of_pages before dispatching so the embedding worker can
+        # finalise document status as soon as the last batch is done.
+        document.number_of_pages = len(batches)
+        document.save(update_fields=["number_of_pages"])
 
         embedding_queue_url = os.environ["EMBEDDING_SQS_QUEUE_URL"]
         sqs = self._get_sqs_client()

@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 
 from document.models import Document
 from document_chunk.models import DocumentChunk
+from document_page.models import DocumentPage
 from document_chunk.services.chunk_refresh_service import ChunkRefreshService
 from document_chunk.services.embeddings_processor import BatchEmbeddingResult
 from document_chunk.services.exceptions.document_chunk_exceptions import (
@@ -24,8 +25,9 @@ class TestChunkRefreshService(TestCase):
             status=Document.Status.PROCESSED,
             s3_key="docs/test.pdf",
         )
+        self.page = DocumentPage.objects.create(document=self.document)
         self.chunk = DocumentChunk.objects.create(
-            document=self.document,
+            page=self.page,
             content="Original content",
             embedding=[0.0] * 1024,
             chunk_index=0,

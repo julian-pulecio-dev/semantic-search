@@ -67,7 +67,7 @@ class ChunkRefreshService:
 
         pages = self.pdf_extractor.extract(
             os.environ["S3_BUCKET_NAME"],
-            chunk.document.s3_key,
+            chunk.page.document.s3_key,
         )
 
         new_text = self._extract_text_from_polygons(bounding_polygons, pages)
@@ -112,7 +112,7 @@ class ChunkRefreshService:
     @staticmethod
     def _doc_context_text(chunk: DocumentChunk) -> str:
         filename = (
-            os.path.basename(chunk.document.s3_key or "")
+            os.path.basename(chunk.page.document.s3_key or "")
             .replace("_", " ")
             .replace("-", " ")
         )

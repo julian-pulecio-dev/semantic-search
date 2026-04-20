@@ -1,12 +1,10 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from django.db import DatabaseError
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from document.models import Document
-from document_chunk.models import DocumentChunk
 from document_chunk.services.document_chunk_processor import (
     Chunk,
     DocumentChunkProcessor,
@@ -18,32 +16,8 @@ User = get_user_model()
 
 
 class TestChunk(unittest.TestCase):
-    def test_with_embedding_returns_new_chunk_with_embedding_attached(self):
-        chunk = Chunk(content="text", page_number=1, document_id=1)
-        result = chunk.with_embedding([0.1, 0.2])
-        self.assertEqual(result.content, "text")
-        self.assertEqual(result.page_number, 1)
-        self.assertEqual(result.document_id, 1)
-        self.assertEqual(result.embedding, [0.1, 0.2])
-
-    def test_with_embedding_does_not_mutate_the_original_chunk(self):
-        chunk = Chunk(content="text", page_number=1, document_id=1)
-        chunk.with_embedding([0.1])
-        self.assertIsNone(chunk.embedding)
-
-    def test_with_embedding_preserves_bounding_polygons(self):
-        polygons = [{"page_number": 1, "points": [[0, 0], [100, 0]]}]
-        chunk = Chunk(
-            content="text",
-            page_number=1,
-            document_id=1,
-            bounding_polygons=polygons,
-        )
-        result = chunk.with_embedding([0.1])
-        self.assertEqual(result.bounding_polygons, polygons)
-
     def test_chunk_is_immutable(self):
-        chunk = Chunk(content="text", page_number=1, document_id=1)
+        chunk = Chunk(content="text", chunk_index=0, document_id=1)
         with self.assertRaises((AttributeError, TypeError)):
             chunk.content = "other"
 
@@ -150,35 +124,6 @@ class TestDocumentChunkProcessorMethods(TestCase):
         self.assertEqual(chunks[0].content, "chunk 1")
         self.assertEqual(chunks[1].content, "chunk 2")
 
-    def test_text_to_chunks_page_number_falls_back_to_first_page_when_no_polygon(
-        self,
-    ):
-        processor = self._make_processor()
-        self.mock_splitter.split_text.return_value = ["chunk 1"]
-
-        chunks = processor._text_to_chunks(
-            [{"page_number": 3, "text": "some text", "words": []}]
-        )
-
-        self.assertEqual(chunks[0].page_number, 3)
-
-    def test_text_to_chunks_page_number_derived_from_first_polygon(self):
-        processor = self._make_processor()
-        self.mock_splitter.split_text.return_value = ["chunk 1"]
-        polygon = PagePolygon(
-            page_number=5, points=[(0.0, 0.0), (10.0, 0.0), (10.0, 5.0)]
-        )
-        self.mock_bounding_polygon_resolver.resolve.return_value = (
-            [polygon],
-            {5: 3},
-        )
-
-        chunks = processor._text_to_chunks(
-            [{"page_number": 1, "text": "some text", "words": []}]
-        )
-
-        self.assertEqual(chunks[0].page_number, 5)
-
     def test_text_to_chunks_bounding_polygons_stored_in_chunk(self):
         processor = self._make_processor()
         self.mock_splitter.split_text.return_value = ["chunk 1"]
@@ -242,99 +187,9 @@ class TestDocumentChunkProcessorMethods(TestCase):
 
         self.assertEqual(chunks[0].document_id, self.document.id)
 
-    # --- _save_chunks ---
+    # --- process() ---
 
-    def test_save_chunks_persists_chunks_without_embedding(self):
-        processor = self._make_processor()
-        chunks = [
-            Chunk(
-                content="chunk text",
-                page_number=1,
-                document_id=self.document.id,
-            )
-        ]
-
-        processor._save_chunks(chunks)
-
-        saved = DocumentChunk.objects.filter(document=self.document)
-        self.assertEqual(saved.count(), 1)
-        self.assertEqual(saved.first().content, "chunk text")
-        self.assertIsNone(saved.first().embedding)
-
-    def test_save_chunks_assigns_sequential_chunk_indices(self):
-        processor = self._make_processor()
-        chunks = [
-            Chunk(
-                content="first", page_number=1, document_id=self.document.id
-            ),
-            Chunk(
-                content="second", page_number=1, document_id=self.document.id
-            ),
-        ]
-
-        processor._save_chunks(chunks)
-
-        indices = list(
-            DocumentChunk.objects.filter(document=self.document)
-            .order_by("chunk_index")
-            .values_list("chunk_index", flat=True)
-        )
-        self.assertEqual(indices, [0, 1])
-
-    def test_save_chunks_returns_list_of_ids(self):
-        processor = self._make_processor()
-        chunks = [
-            Chunk(content="a", page_number=1, document_id=self.document.id),
-            Chunk(content="b", page_number=1, document_id=self.document.id),
-        ]
-
-        ids = processor._save_chunks(chunks)
-
-        self.assertEqual(len(ids), 2)
-        self.assertTrue(all(isinstance(i, str) for i in ids))
-        db_ids = list(
-            DocumentChunk.objects.filter(document=self.document).values_list(
-                "id", flat=True
-            )
-        )
-        self.assertCountEqual(ids, [str(i) for i in db_ids])
-
-    def test_save_chunks_persists_bounding_polygons(self):
-        processor = self._make_processor()
-        polygons = [
-            {"page_number": 1, "points": [[0, 0], [10, 0], [10, 5], [0, 5]]}
-        ]
-        chunks = [
-            Chunk(
-                content="chunk text",
-                page_number=1,
-                document_id=self.document.id,
-                bounding_polygons=polygons,
-            )
-        ]
-
-        processor._save_chunks(chunks)
-
-        saved = DocumentChunk.objects.filter(document=self.document).first()
-        self.assertEqual(saved.bounding_polygons, polygons)
-
-    def test_save_chunks_raises_persistence_error_on_database_failure(self):
-        processor = self._make_processor()
-        chunks = [
-            Chunk(content="a", page_number=1, document_id=self.document.id)
-        ]
-
-        with patch(
-            "document_chunk.services.document_chunk_processor"
-            ".DocumentChunk.objects.bulk_create",
-            side_effect=DatabaseError("db error"),
-        ):
-            with self.assertRaises(DocumentPersistenceError):
-                processor._save_chunks(chunks)
-
-    # --- process() batch output ---
-
-    def test_process_returns_batches_of_chunk_ids(self):
+    def test_process_returns_batches_of_chunks(self):
         processor = self._make_processor(chunk_batch_size=2)
         self.mock_pdf_extractor.extract.return_value = [
             {"page_number": 1, "text": "a b c d e", "words": []}
@@ -346,25 +201,10 @@ class TestDocumentChunkProcessorMethods(TestCase):
         with patch.dict(os.environ, {"S3_BUCKET_NAME": "test-bucket"}):
             batches = processor.process()
 
-        # 3 chunks, batch_size=2 → 2 batches: [2 ids, 1 id]
+        # 3 chunks, batch_size=2 → 2 batches: [2 chunks, 1 chunk]
         self.assertEqual(len(batches), 2)
         self.assertEqual(len(batches[0]), 2)
         self.assertEqual(len(batches[1]), 1)
-
-    def test_process_sets_embedding_batches_total_on_document(self):
-        processor = self._make_processor(chunk_batch_size=10)
-        self.mock_pdf_extractor.extract.return_value = [
-            {"page_number": 1, "text": "x", "words": []}
-        ]
-        self.mock_splitter.split_text.return_value = ["c1", "c2"]
-
-        import os
-
-        with patch.dict(os.environ, {"S3_BUCKET_NAME": "test-bucket"}):
-            processor.process()
-
-        self.document.refresh_from_db()
-        self.assertEqual(self.document.embedding_batches_total, 1)
 
     def test_process_marks_document_processed_when_no_chunks(self):
         processor = self._make_processor()
@@ -381,23 +221,3 @@ class TestDocumentChunkProcessorMethods(TestCase):
         self.assertEqual(batches, [])
         self.document.refresh_from_db()
         self.assertEqual(self.document.status, Document.Status.PROCESSED)
-
-    def test_process_marks_document_failed_on_persistence_error(self):
-        processor = self._make_processor()
-        self.mock_pdf_extractor.extract.return_value = [
-            {"page_number": 1, "text": "x", "words": []}
-        ]
-        self.mock_splitter.split_text.return_value = ["c1"]
-
-        import os
-
-        with patch.dict(os.environ, {"S3_BUCKET_NAME": "test-bucket"}), patch(
-            "document_chunk.services.document_chunk_processor"
-            ".DocumentChunk.objects.bulk_create",
-            side_effect=DatabaseError("db error"),
-        ):
-            with self.assertRaises(DocumentPersistenceError):
-                processor.process()
-
-        self.document.refresh_from_db()
-        self.assertEqual(self.document.status, Document.Status.FAILED)

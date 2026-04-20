@@ -11,11 +11,11 @@ User = get_user_model()
 
 
 def PAGE_LIST_URL(doc_id):
-    return reverse("page-list", kwargs={"doc_id": doc_id})
+    return reverse("document:page-list", kwargs={"doc_id": doc_id})
 
 
 def PAGE_DETAIL_URL(doc_id, pk):
-    return reverse("page-detail", kwargs={"doc_id": doc_id, "pk": pk})
+    return reverse("document:page-detail", kwargs={"doc_id": doc_id, "pk": pk})
 
 
 class DocumentPageListCreateViewTestCase(APITestCase):

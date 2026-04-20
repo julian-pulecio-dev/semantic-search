@@ -21,9 +21,10 @@ _BATCH_RESULT = BatchEmbeddingResult(
     throttle_count=0,
 )
 _POLYGONS = [{"page_number": 1, "points": [[0, 0], [1, 0], [1, 1], [0, 1]]}]
+_ABSENT = object()  # sentinel: key present but caller wants the default polygons
 
 
-def _chunk_data(chunk_index=0, content="chunk text", bounding_polygons=None):
+def _chunk_data(chunk_index=0, content="chunk text", bounding_polygons=_ABSENT):
     return {
         "content": content,
         "chunk_index": chunk_index,
@@ -31,7 +32,7 @@ def _chunk_data(chunk_index=0, content="chunk text", bounding_polygons=None):
         "section_title": "chunk text",
         "context_prefix": "[Legal] chunk text",
         "bounding_polygons": (
-            bounding_polygons if bounding_polygons is not None else _POLYGONS
+            _POLYGONS if bounding_polygons is _ABSENT else bounding_polygons
         ),
     }
 
@@ -45,8 +46,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
             user=self.user,
             status=Document.Status.PROCESSING,
             s3_key="docs/embed.pdf",
-            embedding_batches_total=1,
-            embedding_batches_done=0,
+            number_of_pages=1,
         )
         self.mock_processor = MagicMock()
         self.mock_processor.embed_batch.return_value = _BATCH_RESULT
@@ -62,7 +62,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            document=self.document, chunk_index=0
+            page__document=self.document, chunk_index=0
         )
         self.assertEqual(chunk.content, "chunk text")
         self.assertEqual(chunk.section_type, "Legal")
@@ -73,7 +73,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            document=self.document, chunk_index=0
+            page__document=self.document, chunk_index=0
         )
         self.assertEqual(chunk.bounding_polygons, _POLYGONS)
 
@@ -84,7 +84,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            document=self.document, chunk_index=0
+            page__document=self.document, chunk_index=0
         )
         self.assertIsNone(chunk.bounding_polygons)
 
@@ -98,7 +98,10 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         self.assertEqual(
-            DocumentChunk.objects.filter(document=self.document).count(), 2
+            DocumentChunk.objects.filter(
+                page__document=self.document
+            ).count(),
+            2,
         )
 
     # --- embeddings ---
@@ -111,7 +114,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            document=self.document, chunk_index=0
+            page__document=self.document, chunk_index=0
         )
         self.assertTrue(np.allclose(chunk.embedding, _EMBEDDING))
         self.assertTrue(np.allclose(chunk.embedding_title, _EMBEDDING))
@@ -125,7 +128,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            document=self.document, chunk_index=0
+            page__document=self.document, chunk_index=0
         )
         self.assertIsNone(chunk.embedding)
         self.assertIsNone(chunk.embedding_title)
@@ -146,29 +149,29 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk0 = DocumentChunk.objects.get(
-            document=self.document, chunk_index=0
+            page__document=self.document, chunk_index=0
         )
         chunk1 = DocumentChunk.objects.get(
-            document=self.document, chunk_index=1
+            page__document=self.document, chunk_index=1
         )
         self.assertIsNone(chunk0.embedding)
         self.assertIsNotNone(chunk1.embedding)
 
     # --- document finalisation ---
 
-    def test_increments_embedding_batches_done(self):
+    def test_increments_number_of_pages_processed(self):
         self.service.process_batch(str(self.document.id), [_chunk_data()])
 
         self.document.refresh_from_db()
-        self.assertEqual(self.document.embedding_batches_done, 1)
+        self.assertEqual(self.document.number_of_pages_processed, 1)
 
-    def test_marks_document_processed_when_all_batches_done_and_no_nulls(self):
+    def test_marks_document_processed_when_all_pages_done_and_no_nulls(self):
         self.service.process_batch(str(self.document.id), [_chunk_data()])
 
         self.document.refresh_from_db()
         self.assertEqual(self.document.status, Document.Status.PROCESSED)
 
-    def test_marks_document_incompleted_when_all_batches_done_but_some_null(
+    def test_marks_document_incompleted_when_all_pages_done_but_some_null(
         self,
     ):
         self.mock_processor.embed_batch.side_effect = EmbeddingError("fail")
@@ -178,19 +181,19 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         self.document.refresh_from_db()
         self.assertEqual(self.document.status, Document.Status.INCOMPLETED)
 
-    def test_does_not_finalise_document_when_batches_not_complete(self):
-        self.document.embedding_batches_total = 3
-        self.document.save(update_fields=["embedding_batches_total"])
+    def test_does_not_finalise_document_when_pages_not_complete(self):
+        self.document.number_of_pages = 3
+        self.document.save(update_fields=["number_of_pages"])
 
         self.service.process_batch(str(self.document.id), [_chunk_data()])
 
         self.document.refresh_from_db()
         self.assertEqual(self.document.status, Document.Status.PROCESSING)
-        self.assertEqual(self.document.embedding_batches_done, 1)
+        self.assertEqual(self.document.number_of_pages_processed, 1)
 
-    def test_does_not_finalise_when_batches_total_is_none(self):
-        self.document.embedding_batches_total = None
-        self.document.save(update_fields=["embedding_batches_total"])
+    def test_does_not_finalise_when_number_of_pages_is_none(self):
+        self.document.number_of_pages = None
+        self.document.save(update_fields=["number_of_pages"])
 
         self.service.process_batch(str(self.document.id), [_chunk_data()])
 

@@ -140,7 +140,7 @@ class TestDocumentChunkingHandlerChunkAndDispatch(SimpleTestCase):
     @patch("workers.document_chunking.handler.boto3.client")
     @patch("workers.document_chunking.handler.DocumentChunkProcessor")
     @patch("workers.document_chunking.handler.Document")
-    def test_sets_embedding_batches_total_before_dispatching(
+    def test_sets_number_of_pages_before_dispatching(
         self, mock_document_cls, mock_processor_cls, mock_boto3
     ):
         mock_document = MagicMock()
@@ -157,9 +157,9 @@ class TestDocumentChunkingHandlerChunkAndDispatch(SimpleTestCase):
             self.handler._chunk_and_dispatch("docs/test.pdf")
 
         mock_document.save.assert_called_once_with(
-            update_fields=["embedding_batches_total"]
+            update_fields=["number_of_pages"]
         )
-        self.assertEqual(mock_document.embedding_batches_total, 2)
+        self.assertEqual(mock_document.number_of_pages, 2)
 
     @patch("workers.document_chunking.handler.boto3.client")
     @patch("workers.document_chunking.handler.DocumentChunkProcessor")

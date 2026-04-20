@@ -62,14 +62,13 @@ class TestS3FileLoaderService(unittest.TestCase):
             self.service.file_exists("test-key")
 
     def test_get_file_success(self):
-        """Verify that get_file retrieves file content successfully."""
+        """Verify that get_file retrieves the streaming body successfully."""
 
         mock_body = MagicMock()
-        mock_body.read.return_value = b"file content"
         self.mock_s3.get_object.return_value = {"Body": mock_body}
 
         result = self.service.get_file("test-key")
-        self.assertEqual(result, b"file content")
+        self.assertIs(result, mock_body)
         self.mock_s3.get_object.assert_called_once_with(
             Bucket=self.bucket_name, Key="test-key"
         )
