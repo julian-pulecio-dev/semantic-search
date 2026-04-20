@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "document_chunk",
     "document_type",
     "upload_session",
+    "document_page",
 ]
 
 MIDDLEWARE = [
