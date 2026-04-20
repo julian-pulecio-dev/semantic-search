@@ -183,7 +183,7 @@ class ChunkBoundingPolygon:
         ]
 
         anchor_start_page, anchor_end_page = self._find_anchor(
-            anchor_tokens, page_tokens, start_from
+            anchor_tokens, page_tokens, 0
         )
 
         if anchor_start_page is None:
