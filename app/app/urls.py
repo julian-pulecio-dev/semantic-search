@@ -15,7 +15,7 @@ Including another URLconf
 """
 
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
@@ -27,11 +27,10 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 from user import urls as user_urls
-from document import urls as document_urls
 from document_type import urls as document_type_urls
-from document_chunk import urls as document_chunk_urls
 from upload_session import urls as upload_session_urls
-from django.urls import include
+from document_chunk.views import SemanticSearchView
+import document.urls as document_urls
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -54,8 +53,12 @@ urlpatterns = [
     ),
     path("api/token/verify/", TokenVerifyView.as_view(), name="token_verify"),
     path("api/user/", include(user_urls)),
-    path("api/document/", include(document_urls)),
     path("api/document_type/", include(document_type_urls)),
-    path("api/chunk/", include(document_chunk_urls)),
     path("api/upload_session/", include(upload_session_urls)),
+    path(
+        "api/documents/search/",
+        SemanticSearchView.as_view(),
+        name="semantic-search",
+    ),
+    path("api/documents/", include(document_urls)),
 ]

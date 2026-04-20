@@ -1,7 +1,7 @@
 import uuid
 from django.db import models
 from django.core.validators import MinValueValidator
-from document.models import Document
+from document_page.models import DocumentPage
 from pgvector.django import VectorField, HnswIndex
 
 
@@ -12,8 +12,8 @@ class DocumentChunk(models.Model):
         editable=False,
     )
 
-    document = models.ForeignKey(
-        Document,
+    page = models.ForeignKey(
+        DocumentPage,
         on_delete=models.CASCADE,
         related_name="chunks",
         db_index=True,
@@ -21,15 +21,10 @@ class DocumentChunk(models.Model):
 
     content = models.TextField()
 
-    # Contextual metadata added during chunking
     section_type = models.CharField(max_length=100, null=True, blank=True)
     section_title = models.CharField(max_length=500, null=True, blank=True)
     context_prefix = models.TextField(null=True, blank=True)
 
-    # Multi-level embeddings
-    # embedding       → full contextual chunk  ([section_type] section_title: content)
-    # embedding_title → section header          ([section_type] section_title)
-    # embedding_doc   → document-level context  (document name / identifier)
     embedding = VectorField(
         dimensions=1024,
         null=True,
@@ -45,7 +40,6 @@ class DocumentChunk(models.Model):
         null=True,
         blank=True,
     )
-
     chunk_index = models.PositiveIntegerField(
         validators=[MinValueValidator(0)]
     )
@@ -61,12 +55,12 @@ class DocumentChunk(models.Model):
         ordering = ["chunk_index"]
         constraints = [
             models.UniqueConstraint(
-                fields=["document", "chunk_index"],
-                name="unique_chunk_per_document",
+                fields=["page", "chunk_index"],
+                name="unique_chunk_per_page",
             )
         ]
         indexes = [
-            models.Index(fields=["document", "chunk_index"]),
+            models.Index(fields=["page", "chunk_index"]),
             HnswIndex(
                 name="chunk_embedding_hnsw",
                 fields=["embedding"],
@@ -91,4 +85,4 @@ class DocumentChunk(models.Model):
         ]
 
     def __str__(self):
-        return f"Chunk {self.chunk_index} - Document {self.document_id}"
+        return f"Chunk {self.chunk_index} - Page {self.page_id}"

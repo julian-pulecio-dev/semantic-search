@@ -20,10 +20,23 @@ class DocumentChunkingHandler(Handler):
     SQS queue.
 
     Each embedding batch message has the form:
-        {"document_id": "<uuid>", "chunk_ids": ["<uuid>", ...]}
+        {
+            "document_id": "<uuid>",
+            "chunks": [
+                {
+                    "content": "...",
+                    "chunk_index": 0,
+                    "section_type": "...",
+                    "section_title": "...",
+                    "context_prefix": "..."
+                },
+                ...
+            ],
+        }
 
-    The number of chunk IDs per message is controlled by the
-    EMBEDDING_BATCH_SIZE environment variable (default 10).
+
+    Chunks are NOT persisted here. The embedding worker persists each chunk,
+    attaches embeddings, and resolves bounding polygons.
     """
 
     def __init__(self):
@@ -58,17 +71,9 @@ class DocumentChunkingHandler(Handler):
                 f"Document with key {document_key} not found in database"
             )
 
-        batch_size = int(os.environ.get("EMBEDDING_BATCH_SIZE", "10"))
-        processor = DocumentChunkProcessor(
-            document=document,
-            chunk_batch_size=batch_size,
-        )
+        processor = DocumentChunkProcessor(document=document)
 
-        try:
-            batches = processor.process()
-        except DocumentProcessingError:
-            logger.error("Chunking failed for document=%s", document_key)
-            raise
+        batches = processor.process()
 
         if not batches:
             logger.info(
@@ -77,16 +82,21 @@ class DocumentChunkingHandler(Handler):
             )
             return
 
+        # Set embedding_batches_total before dispatching so the embedding
+        # worker can finalise document status as soon as the last batch done.
+        document.embedding_batches_total = len(batches)
+        document.save(update_fields=["embedding_batches_total"])
+
         embedding_queue_url = os.environ["EMBEDDING_SQS_QUEUE_URL"]
         sqs = self._get_sqs_client()
 
-        for chunk_ids in batches:
+        for batch in batches:
             sqs.send_message(
                 QueueUrl=embedding_queue_url,
                 MessageBody=json.dumps(
                     {
                         "document_id": str(document.id),
-                        "chunk_ids": chunk_ids,
+                        "chunks": [chunk.to_dict() for chunk in batch],
                     }
                 ),
             )

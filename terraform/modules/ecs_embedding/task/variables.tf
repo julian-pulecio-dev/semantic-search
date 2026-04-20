@@ -10,6 +10,11 @@ variable "sqs_queue_arn" {
   type = string
 }
 
+variable "s3_bucket_name" {
+  description = "Name of the S3 bucket used to read source PDFs for polygon resolution"
+  type        = string
+}
+
 variable "environment_variables" {
   type = list(object({
     name  = string

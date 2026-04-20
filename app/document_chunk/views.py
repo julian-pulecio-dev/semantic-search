@@ -24,27 +24,29 @@ from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from document_chunk.services.chunk_refresh_service import ChunkRefreshService
 
 
-class DocumentChunkListView(generics.ListAPIView):
+class DocumentChunkListCreateView(generics.ListCreateAPIView):
     serializer_class = DocumentChunkSerializer
     permission_classes = []
 
     def get_queryset(self):
-        document_id = self.kwargs["document_id"]
-
         return (
-            DocumentChunk.objects.select_related("document")
-            .filter(document_id=document_id)
+            DocumentChunk.objects.select_related("page")
+            .filter(page_id=self.kwargs["page_id"])
             .order_by("chunk_index")
         )
 
+    def perform_create(self, serializer):
+        serializer.save(page_id=self.kwargs["page_id"])
 
-class DocumentChunkDetailView(generics.RetrieveAPIView):
+
+class DocumentChunkRetrieveUpdateDestroyView(
+    generics.RetrieveUpdateDestroyAPIView
+):
     serializer_class = DocumentChunkSerializer
     permission_classes = []
-    lookup_field = "id"
 
     def get_queryset(self):
-        return DocumentChunk.objects.all()
+        return DocumentChunk.objects.filter(page_id=self.kwargs["page_id"])
 
 
 class ChunkRefreshView(APIView):
@@ -54,8 +56,10 @@ class ChunkRefreshView(APIView):
         request=ChunkRefreshSerializer,
         responses={200: DocumentChunkSerializer},
     )
-    def patch(self, request, id):
-        chunk = generics.get_object_or_404(DocumentChunk, id=id)
+    def patch(self, request, page_id, pk):
+        chunk = generics.get_object_or_404(
+            DocumentChunk, id=pk, page_id=page_id
+        )
 
         serializer = ChunkRefreshSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

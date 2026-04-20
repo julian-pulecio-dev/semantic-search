@@ -7,15 +7,6 @@ class Handler(ABC):
     Base contract for any processing logic executed by WorkerHandler.
 
     Responsibilities separation:
-
-    WorkerHandler:
-        - SQS polling
-        - concurrency control
-        - visibility timeout heartbeat
-        - message deletion
-        - lifecycle orchestration
-
-    Handler:
         - business logic
         - message interpretation
         - external integrations (DB, APIs, etc.)

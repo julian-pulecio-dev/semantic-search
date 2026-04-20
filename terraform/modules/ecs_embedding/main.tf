@@ -11,16 +11,18 @@ module "iam_role" {
 }
 
 module "ecs_task_definition" {
-  source        = "./task"
-  name          = "${var.name}-ecs-task-definition"
-  iam_role_arn  = module.iam_role.arn
-  sqs_queue_arn = var.sqs_queue_arn
+  source          = "./task"
+  name            = "${var.name}-ecs-task-definition"
+  iam_role_arn    = module.iam_role.arn
+  sqs_queue_arn   = var.sqs_queue_arn
+  s3_bucket_name  = var.s3_bucket_name
 
   environment_variables = [
-    { name = "SQS_QUEUE_URL", value = var.sqs_queue_url },
-    { name = "DB_HOST",       value = var.db_host },
-    { name = "DB_NAME",       value = var.db_name },
-    { name = "DB_PORT",       value = var.db_port },
+    { name = "SQS_QUEUE_URL",   value = var.sqs_queue_url },
+    { name = "DB_HOST",         value = var.db_host },
+    { name = "DB_NAME",         value = var.db_name },
+    { name = "DB_PORT",         value = var.db_port },
+    { name = "S3_BUCKET_NAME",  value = var.s3_bucket_name },
   ]
   secret_variables = [
     { name = "DB_USER",     valueFrom = var.db_user_secret_arn },

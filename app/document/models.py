@@ -12,13 +12,6 @@ class Document(models.Model):
         INCOMPLETED = "INCOMPLETED", "INCOMPLETED"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    document = models.OneToOneField(
-        "document.Document",
-        on_delete=models.CASCADE,
-        related_name="upload_session",
-        null=True,
-        blank=True,
-    )
     s3_key = models.CharField(
         max_length=255, unique=True, null=True, blank=True, editable=False
     )
@@ -28,11 +21,11 @@ class Document(models.Model):
         null=False,
         blank=False,
     )
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-    embedding_batches_total = models.PositiveIntegerField(
+    number_of_pages = models.PositiveIntegerField(
         null=True, blank=True, default=None
     )
-    embedding_batches_done = models.PositiveIntegerField(default=0)
+    number_of_pages_processed = models.PositiveIntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="documents"
     )

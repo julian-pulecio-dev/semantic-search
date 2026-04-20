@@ -129,7 +129,7 @@ class ChunkBoundingPolygon:
             page_num = page["page_number"]
             page_words = page["words"]
             page_tokens = [self._normalize(w["text"]) for w in page_words]
-            start_from = 0  # each chunk resolves its polygon independently
+            start_from = page_cursors.get(page_num, 0)
 
             matched_words, remaining, next_cursor, coverage = (
                 self._match_tokens(

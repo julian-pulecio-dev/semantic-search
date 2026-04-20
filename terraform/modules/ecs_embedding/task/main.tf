@@ -51,6 +51,31 @@ resource "aws_iam_policy" "ecs_bedrock_embed" {
   })
 }
 
+resource "aws_iam_policy" "ecs_s3_read" {
+  name = "${var.name}-s3-read"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "arn:aws:s3:::${var.s3_bucket_name}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = "arn:aws:s3:::${var.s3_bucket_name}"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_s3_read_attach" {
+  role       = aws_iam_role.ecs_task.name
+  policy_arn = aws_iam_policy.ecs_s3_read.arn
+}
+
 resource "aws_iam_role_policy_attachment" "ecs_sqs_consume_attach" {
   role       = aws_iam_role.ecs_task.name
   policy_arn = aws_iam_policy.ecs_sqs_consume.arn

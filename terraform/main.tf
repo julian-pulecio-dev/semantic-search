@@ -18,9 +18,9 @@ module "s3" {
   source = "./modules/s3"
 }
 
-module "sqs" {
+module "sqs_sclicing" {
   source = "./modules/sqs"
-  name = "${var.name}-sqs"
+  name = "${var.name}-sqs-slicing"
 }
 
 module "sqs_embedding" {
@@ -31,8 +31,8 @@ module "sqs_embedding" {
 module "eventbridge" {
   source = "./modules/event_bridge"
   bucket_name = module.s3.bucket_name
-  sqs_queue_arn = module.sqs.arn
-  sqs_queue_url = module.sqs.url
+  sqs_queue_arn = module.sqs_sclicing.arn
+  sqs_queue_url = module.sqs_sclicing.url
 } 
 
 module "vpc" {
@@ -50,40 +50,58 @@ module "rds" {
   allowed_security_group_ids = [module.vpc.security_group_id]
 }
 
-module "ecs_doc_chunking" {
-  source                  = "./modules/ecs_doc_chunking"
-  name                    = "${var.name}-doc-chunking"
-  sqs_queue_arn           = module.sqs.arn
-  sqs_queue_url           = module.sqs.url
-  sqs_queue_name          = module.sqs.name
-  embedding_sqs_queue_arn = module.sqs_embedding.arn
-  embedding_sqs_queue_url = module.sqs_embedding.url
-  s3_bucket_name          = module.s3.bucket_name
-  subnet_ids              = module.vpc.subnet_ids
-  security_group_id       = module.vpc.security_group_id
-  db_name                 = var.db_name
-  db_user_secret_arn      = data.aws_secretsmanager_secret.db_user.arn
-  db_password_secret_arn  = data.aws_secretsmanager_secret.db_password.arn
-  db_host                 = module.rds.database_host
-  db_port                 = module.rds.database_port
-  desired_count           = var.ecs_desired_count
+module "ecs_worker" {
+  source = "./modules/ecs_worker"
+  name   = "${var.name}-page-slicing-worker"
+  sqs_queue_arn = module.sqs_sclicing.arn
+  sqs_queue_url = module.sqs_sclicing.url
+  sqs_queue_name = module.sqs_sclicing.name
+  subnet_ids = module.vpc.subnet_ids
+  security_group_id = module.vpc.security_group_id
+  db_name = var.db_name
+  db_user_secret_arn = data.aws_secretsmanager_secret.db_user.arn
+  db_password_secret_arn = data.aws_secretsmanager_secret.db_password.arn
+  db_host = module.rds.database_host
+  db_port = module.rds.database_port
+  s3_bucket_name = module.s3.bucket_name
+  desired_count = var.ecs_desired_count
 }
 
-module "ecs_embedding" {
-  source                 = "./modules/ecs_embedding"
-  name                   = "${var.name}-embedding"
-  sqs_queue_arn          = module.sqs_embedding.arn
-  sqs_queue_url          = module.sqs_embedding.url
-  sqs_queue_name         = module.sqs_embedding.name
-  subnet_ids             = module.vpc.subnet_ids
-  security_group_id      = module.vpc.security_group_id
-  db_name                = var.db_name
-  db_user_secret_arn     = data.aws_secretsmanager_secret.db_user.arn
-  db_password_secret_arn = data.aws_secretsmanager_secret.db_password.arn
-  db_host                = module.rds.database_host
-  db_port                = module.rds.database_port
-  desired_count          = var.ecs_desired_count
-}
+# module "ecs_doc_chunking" {
+#   source                  = "./modules/ecs_doc_chunking"
+#   name                    = "${var.name}-doc-chunking"
+#   sqs_queue_arn           = module.sqs.arn
+#   sqs_queue_url           = module.sqs.url
+#   sqs_queue_name          = module.sqs.name
+#   embedding_sqs_queue_arn = module.sqs_embedding.arn
+#   embedding_sqs_queue_url = module.sqs_embedding.url
+#   s3_bucket_name          = module.s3.bucket_name
+#   subnet_ids              = module.vpc.subnet_ids
+#   security_group_id       = module.vpc.security_group_id
+#   db_name                 = var.db_name
+#   db_user_secret_arn      = data.aws_secretsmanager_secret.db_user.arn
+#   db_password_secret_arn  = data.aws_secretsmanager_secret.db_password.arn
+#   db_host                 = module.rds.database_host
+#   db_port                 = module.rds.database_port
+#   desired_count           = var.ecs_desired_count
+# }
+
+# module "ecs_embedding" {
+#   source                 = "./modules/ecs_embedding"
+#   name                   = "${var.name}-embedding"
+#   sqs_queue_arn          = module.sqs_embedding.arn
+#   sqs_queue_url          = module.sqs_embedding.url
+#   sqs_queue_name         = module.sqs_embedding.name
+#   subnet_ids             = module.vpc.subnet_ids
+#   security_group_id      = module.vpc.security_group_id
+#   db_name                = var.db_name
+#   db_user_secret_arn     = data.aws_secretsmanager_secret.db_user.arn
+#   db_password_secret_arn = data.aws_secretsmanager_secret.db_password.arn
+#   db_host                = module.rds.database_host
+#   db_port                = module.rds.database_port
+#   s3_bucket_name         = module.s3.bucket_name
+#   desired_count          = var.ecs_desired_count
+# }
 
 module "ecs_web" {
   source                 = "./modules/ecs_web"

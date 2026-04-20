@@ -1,30 +1,18 @@
 from django.urls import path
 from .views import (
-    DocumentChunkListView,
-    DocumentChunkDetailView,
+    DocumentChunkListCreateView,
+    DocumentChunkRetrieveUpdateDestroyView,
     ChunkRefreshView,
-    SemanticSearchView,
 )
 
 urlpatterns = [
+    path("", DocumentChunkListCreateView.as_view(), name="chunk-list"),
     path(
-        "documents/<uuid:document_id>/chunks/",
-        DocumentChunkListView.as_view(),
-        name="document-chunk-list",
+        "<uuid:pk>/",
+        DocumentChunkRetrieveUpdateDestroyView.as_view(),
+        name="chunk-detail",
     ),
     path(
-        "chunks/<uuid:id>/",
-        DocumentChunkDetailView.as_view(),
-        name="document-chunk-detail",
-    ),
-    path(
-        "chunks/<uuid:id>/refresh/",
-        ChunkRefreshView.as_view(),
-        name="document-chunk-refresh",
-    ),
-    path(
-        "search/",
-        SemanticSearchView.as_view(),
-        name="semantic-search",
+        "<uuid:pk>/refresh/", ChunkRefreshView.as_view(), name="chunk-refresh"
     ),
 ]

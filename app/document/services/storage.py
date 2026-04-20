@@ -5,6 +5,7 @@ from document.services.exceptions.storage_exceptions import (
     S3ServiceError,
     handle_storage_errors,
 )
+from botocore.response import StreamingBody
 from botocore.exceptions import ClientError
 from botocore.exceptions import BotoCoreError
 
@@ -23,6 +24,9 @@ class S3FileLoaderService:
 
     def build_document_key(self, user_id: int, upload_session_id: int) -> str:
         return f"documents/{user_id}/{upload_session_id}"
+
+    def build_page_key(self, document_id: int, page_number: int) -> str:
+        return f"pages/{document_id}/pages/page_{page_number}.pdf"
 
     def file_exists(self, key: str) -> bool:
         """Check if a file exists in S3 by attempting to retrieve its metadata.
@@ -45,17 +49,22 @@ class S3FileLoaderService:
             raise S3ServiceError("Low-level boto3 error") from e
 
     @handle_storage_errors
-    def get_file(self, key: str) -> bytes:
-        """Retrieve a file from S3 and return its content as bytes.
+    def get_file(self, key: str) -> StreamingBody:
+        """Retrieve a file from S3 and return its content as a streaming body.
 
         Arguments:
             key (str): The S3 key of the file to retrieve.
         Returns:
-            bytes: The content of the file.
+            StreamingBody: The streaming body of the file.
         """
 
         response = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
-        return response["Body"].read()
+
+        body = response.get("Body")
+        if body is None:
+            raise ValueError(f"No body returned for key: {key}")
+
+        return body
 
     @handle_storage_errors
     def delete_file(self, key: str):

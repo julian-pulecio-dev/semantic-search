@@ -58,6 +58,11 @@ variable "scale_out_threshold" {
   default     = 5
 }
 
+variable "s3_bucket_name" {
+  description = "Name of the S3 bucket used to read source PDFs for polygon resolution"
+  type        = string
+}
+
 variable "desired_count" {
   description = "Number of ECS tasks to run. Set to 0 before destroy."
   type        = number

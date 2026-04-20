@@ -94,7 +94,7 @@ resource "aws_iam_policy" "ecs_sqs_send_embedding" {
     Statement = [{
       Effect   = "Allow"
       Action   = ["sqs:SendMessage"]
-      Resource = var.embedding_sqs_queue_arn
+      Resource = var.sqs_queue_arn
     }]
   })
 }

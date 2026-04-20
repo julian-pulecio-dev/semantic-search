@@ -9,7 +9,7 @@ from document.services.storage import S3FileLoaderService
 BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 
 
-class ListAllDocumentsView(generics.ListAPIView):
+class DocumentListCreateView(generics.ListCreateAPIView):
     serializer_class = DocumentSerializer
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
@@ -18,21 +18,18 @@ class ListAllDocumentsView(generics.ListAPIView):
         return Document.objects.all()
 
 
-class RetrieveDocumentView(generics.RetrieveAPIView):
+class DocumentRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DocumentSerializer
     permission_classes = [permissions.AllowAny]
-    authentication_classes = []
-
-    def get_queryset(self):
-        return Document.objects.all()
-
-
-class DeleteDocumentView(generics.DestroyAPIView):
-    permission_classes = [permissions.IsAdminUser]
     authentication_classes = [JWTAuthentication]
 
     def get_queryset(self):
         return Document.objects.all()
+
+    def get_permissions(self):
+        if self.request.method == "DELETE":
+            return [permissions.IsAdminUser()]
+        return [permissions.AllowAny()]
 
     def perform_destroy(self, instance):
         s3_loader = S3FileLoaderService(bucket_name=BUCKET_NAME)

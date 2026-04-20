@@ -16,11 +16,9 @@ module "ecs_task_definition" {
   iam_role_arn            = module.iam_role.arn
   s3_bucket_name          = var.s3_bucket_name
   sqs_queue_arn           = var.sqs_queue_arn
-  embedding_sqs_queue_arn = var.embedding_sqs_queue_arn
-
+  
   environment_variables = [
     { name = "SQS_QUEUE_URL",          value = var.sqs_queue_url },
-    { name = "EMBEDDING_SQS_QUEUE_URL", value = var.embedding_sqs_queue_url },
     { name = "DB_HOST",                value = var.db_host },
     { name = "DB_NAME",                value = var.db_name },
     { name = "DB_PORT",                value = var.db_port },

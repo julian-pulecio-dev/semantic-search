@@ -1,16 +1,15 @@
-from django.urls import path
-from .views import (
-    DeleteDocumentView,
-    ListAllDocumentsView,
-    RetrieveDocumentView,
-)
+from django.urls import path, include
+from .views import DocumentListCreateView, DocumentRetrieveUpdateDestroyView
+import document_page.urls as page_urls
 
 app_name = "document"
 
 urlpatterns = [
-    path("list/", ListAllDocumentsView.as_view(), name="list_all"),
+    path("", DocumentListCreateView.as_view(), name="document-list"),
     path(
-        "retrieve/<uuid:pk>/", RetrieveDocumentView.as_view(), name="retrieve"
+        "<uuid:pk>/",
+        DocumentRetrieveUpdateDestroyView.as_view(),
+        name="document-detail",
     ),
-    path("delete/<uuid:pk>/", DeleteDocumentView.as_view(), name="delete"),
+    path("<uuid:doc_id>/pages/", include(page_urls)),
 ]

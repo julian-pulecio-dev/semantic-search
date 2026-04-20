@@ -14,6 +14,11 @@ resource "aws_cloudwatch_event_rule" "document_uploaded" {
       bucket = {
         name = [var.s3_bucket_name]
       }
+      object = {
+        key = [{
+          prefix = "documents/"
+        }]
+      }
     }
   })
 }

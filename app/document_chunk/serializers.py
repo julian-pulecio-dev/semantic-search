@@ -7,7 +7,7 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
         model = DocumentChunk
         fields = [
             "id",
-            "document",
+            "page",
             "content",
             "section_type",
             "section_title",
@@ -19,7 +19,14 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
             "bounding_polygons",
             "created_at",
         ]
-        read_only_fields = fields
+        read_only_fields = [
+            "id",
+            "page",
+            "embedding",
+            "embedding_title",
+            "embedding_doc",
+            "created_at",
+        ]
 
 
 class ChunkRefreshSerializer(serializers.Serializer):

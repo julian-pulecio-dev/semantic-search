@@ -23,6 +23,19 @@ def _make_s3_event_body(key: str = "documents/test.pdf") -> dict:
     return {"detail": {"object": {"key": key}}}
 
 
+def _make_chunk(chunk_index=0, content="text"):
+    chunk = MagicMock()
+    chunk.chunk_index = chunk_index
+    chunk.to_dict.return_value = {
+        "content": content,
+        "chunk_index": chunk_index,
+        "section_type": "Legal",
+        "section_title": content,
+        "context_prefix": f"[Legal] {content}",
+    }
+    return chunk
+
+
 class TestDocumentChunkingHandlerHandle(SimpleTestCase):
     def setUp(self):
         self.handler = DocumentChunkingHandler()
@@ -99,8 +112,8 @@ class TestDocumentChunkingHandlerChunkAndDispatch(SimpleTestCase):
         mock_document.id = "doc-uuid"
         mock_document_cls.objects.get.return_value = mock_document
 
-        batch1 = ["id1", "id2"]
-        batch2 = ["id3"]
+        batch1 = [_make_chunk(0, "first"), _make_chunk(1, "second")]
+        batch2 = [_make_chunk(2, "third")]
         mock_processor_cls.return_value.process.return_value = [batch1, batch2]
 
         mock_sqs = MagicMock()
@@ -113,16 +126,40 @@ class TestDocumentChunkingHandlerChunkAndDispatch(SimpleTestCase):
 
         self.assertEqual(mock_sqs.send_message.call_count, 2)
 
-        first_call_body = json.loads(
+        first_body = json.loads(
             mock_sqs.send_message.call_args_list[0][1]["MessageBody"]
         )
-        self.assertEqual(first_call_body["document_id"], "doc-uuid")
-        self.assertEqual(first_call_body["chunk_ids"], batch1)
+        self.assertEqual(first_body["document_id"], "doc-uuid")
+        self.assertEqual(len(first_body["chunks"]), 2)
 
-        second_call_body = json.loads(
+        second_body = json.loads(
             mock_sqs.send_message.call_args_list[1][1]["MessageBody"]
         )
-        self.assertEqual(second_call_body["chunk_ids"], batch2)
+        self.assertEqual(len(second_body["chunks"]), 1)
+
+    @patch("workers.document_chunking.handler.boto3.client")
+    @patch("workers.document_chunking.handler.DocumentChunkProcessor")
+    @patch("workers.document_chunking.handler.Document")
+    def test_sets_embedding_batches_total_before_dispatching(
+        self, mock_document_cls, mock_processor_cls, mock_boto3
+    ):
+        mock_document = MagicMock()
+        mock_document_cls.objects.get.return_value = mock_document
+
+        batch1 = [_make_chunk(0)]
+        batch2 = [_make_chunk(1)]
+        mock_processor_cls.return_value.process.return_value = [batch1, batch2]
+        mock_boto3.return_value = MagicMock()
+
+        with patch.dict(
+            os.environ, {"EMBEDDING_SQS_QUEUE_URL": "http://sqs/embed"}
+        ):
+            self.handler._chunk_and_dispatch("docs/test.pdf")
+
+        mock_document.save.assert_called_once_with(
+            update_fields=["embedding_batches_total"]
+        )
+        self.assertEqual(mock_document.embedding_batches_total, 2)
 
     @patch("workers.document_chunking.handler.boto3.client")
     @patch("workers.document_chunking.handler.DocumentChunkProcessor")
@@ -164,27 +201,6 @@ class TestDocumentChunkingHandlerChunkAndDispatch(SimpleTestCase):
 
         with self.assertRaises(DocumentProcessingError):
             self.handler._chunk_and_dispatch("docs/bad.pdf")
-
-    @patch("workers.document_chunking.handler.DocumentChunkProcessor")
-    @patch("workers.document_chunking.handler.Document")
-    def test_uses_embedding_batch_size_from_env(
-        self, mock_document_cls, mock_processor_cls
-    ):
-        mock_document = MagicMock()
-        mock_document_cls.objects.get.return_value = mock_document
-        mock_processor_cls.return_value.process.return_value = []
-
-        with patch.dict(
-            os.environ,
-            {
-                "EMBEDDING_BATCH_SIZE": "5",
-                "EMBEDDING_SQS_QUEUE_URL": "http://sqs/embed",
-            },
-        ):
-            self.handler._chunk_and_dispatch("docs/test.pdf")
-
-        _, kwargs = mock_processor_cls.call_args
-        self.assertEqual(kwargs["chunk_batch_size"], 5)
 
 
 class TestDocumentChunkingHandlerHooks(SimpleTestCase):

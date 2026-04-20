@@ -79,10 +79,12 @@ class TestChunkRefreshService(TestCase):
             }
         ]
         self.mock_pdf_extractor.extract.return_value = self.pages
-        self.mock_embedding_processor.embed_batch.return_value = BatchEmbeddingResult(
-            embeddings=[[0.5] * 1024, [0.5] * 1024, [0.5] * 1024],
-            errors={},
-            throttle_count=0,
+        self.mock_embedding_processor.embed_batch.return_value = (
+            BatchEmbeddingResult(
+                embeddings=[[0.5] * 1024, [0.5] * 1024, [0.5] * 1024],
+                errors={},
+                throttle_count=0,
+            )
         )
 
     # ------------------------------------------------------------------

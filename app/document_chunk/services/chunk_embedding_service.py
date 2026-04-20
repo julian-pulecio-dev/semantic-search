@@ -3,6 +3,7 @@ import os
 
 from django.db import transaction
 from django.db.models import F
+from typing import Optional
 
 from document.models import Document
 from document_chunk.models import DocumentChunk
@@ -15,8 +16,6 @@ from document_chunk.services.exceptions.embedding_exceptions import (
 logger = logging.getLogger(__name__)
 
 __all__ = ["ChunkEmbeddingService"]
-
-_EMBED_FIELDS = ["embedding", "embedding_title", "embedding_doc"]
 
 
 def _doc_context_text(document: Document) -> str:
@@ -32,128 +31,122 @@ def _doc_context_text(document: Document) -> str:
 
 class ChunkEmbeddingService:
     """
-    Processes a single embedding batch: fetches the given chunks, generates
-    three embeddings per chunk (chunk, title, doc), persists the results, and
-    advances the per-document batch counter so the document status can be
-    finalised once every batch has been processed.
+    Processes a single embedding batch received from SQS.
+
+    For each chunk in the batch:
+      1. Persist the chunk (content, metadata, bounding_polygons from message).
+      2. Attach three embeddings (chunk / title / doc). On failure, logs the
+         error and leaves the embedding fields as None.
+
+    After all chunks have been processed, advances the per-document batch
+    counter so the document status can be finalised once every batch is done.
 
     Embedding strategy per chunk
     ----------------------------
     embedding       → "[section_type] section_title: content"  (full contextual chunk)
     embedding_title → "[section_type] section_title"           (section header only)
     embedding_doc   → "Documento legal: <filename>"            (document identifier)
-
-    Failure handling
-    ----------------
-    Individual embedding failures leave the affected field as None.
-    The batch is still counted as *done* so the document status is finalised
-    correctly even when some embeddings fail.
     """
 
     def __init__(self, embedding_processor: EmbeddingsProcessor = None):
         self.embedding_processor = embedding_processor or EmbeddingsProcessor()
 
-    def process_batch(self, document_id: str, chunk_ids: list) -> None:
+    def process_batch(self, document_id: str, chunks_data: list) -> None:
         """
-        Embed the given chunks and persist the result.
+        Persist and embed the given chunk data dicts.
 
         Args:
-            document_id: UUID (str) of the parent document.
-            chunk_ids:   List of DocumentChunk UUID strings to embed.
+            document_id:  UUID (str) of the parent document.
+            chunks_data:  List of chunk dicts, each with keys:
+                          content, chunk_index, section_type, section_title,
+                          context_prefix, bounding_polygons.
         """
-        chunks = list(
-            DocumentChunk.objects.filter(
-                id__in=chunk_ids,
-                document_id=document_id,
-            )
-        )
-
-        if not chunks:
-            logger.warning(
-                "No chunks found for document %s with ids %s — skipping batch",
-                document_id,
-                chunk_ids,
-            )
-            self._finalize_document(document_id)
-            return
-
         try:
             document = Document.objects.get(id=document_id)
         except Document.DoesNotExist:
             logger.error(
                 "Document %s not found — skipping embedding batch", document_id
             )
-            self._finalize_document(document_id)
             return
 
-        self._embed_and_update(chunks, document, document_id)
+        for chunk_data in chunks_data:
+            db_chunk = self._persist_chunk(document, chunk_data)
+            if db_chunk is None:
+                continue
+            self._attach_embeddings(db_chunk)
+
         self._finalize_document(document_id)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _embed_and_update(
-        self, chunks: list, document: Document, document_id: str
-    ) -> None:
-        """
-        Generates three embeddings per chunk in a single batched API call and
-        bulk-updates the chunks.  Individual failures leave the field as None.
-        """
-        n = len(chunks)
-        doc_text = _doc_context_text(document)
-
-        # Build three text lists (chunk / title / doc) and flatten into one batch.
-        chunk_texts = [
-            (
-                f"{c.context_prefix}: {c.content}"
-                if c.context_prefix
-                else c.content
-            )
-            for c in chunks
-        ]
-        title_texts = [c.context_prefix or c.content[:200] for c in chunks]
-        doc_texts = [doc_text] * n
-
-        all_texts = chunk_texts + title_texts + doc_texts
-
+    def _persist_chunk(
+        self, document: Document, chunk_data: dict
+    ) -> Optional[DocumentChunk]:
+        """Creates and saves a DocumentChunk with polygon data but no embeddings."""
         try:
-            result = self.embedding_processor.embed_batch(all_texts)
-        except (EmbeddingError, EmbeddingValidationError, RuntimeError) as e:
+            return DocumentChunk.objects.create(
+                document=document,
+                content=chunk_data["content"],
+                chunk_index=chunk_data["chunk_index"],
+                section_type=chunk_data.get("section_type"),
+                section_title=chunk_data.get("section_title"),
+                context_prefix=chunk_data.get("context_prefix"),
+                bounding_polygons=chunk_data.get("bounding_polygons"),
+            )
+        except Exception as e:
             logger.error(
-                "Embedding batch failed for document %s "
-                "(%d chunks, embeddings left null): %s",
-                document_id,
-                n,
+                "Failed to persist chunk index=%s for document %s: %s",
+                chunk_data.get("chunk_index"),
+                document.id,
                 e,
             )
-            return
+            return None
 
-        embeddings = (
-            result.embeddings
-        )  # List[Optional[List[float]]], length = 3*n
-
-        for i, chunk in enumerate(chunks):
-            chunk.embedding = embeddings[i]
-            chunk.embedding_title = embeddings[n + i]
-            chunk.embedding_doc = embeddings[2 * n + i]
-
-        DocumentChunk.objects.bulk_update(chunks, _EMBED_FIELDS)
-
-        success = sum(1 for e in embeddings[:n] if e is not None)
-        logger.info(
-            "Embedded %d/%d chunks for document %s",
-            success,
-            n,
-            document_id,
+    def _attach_embeddings(self, chunk: DocumentChunk) -> None:
+        """
+        Generates three embeddings for the chunk and saves them.
+        Logs and leaves fields as None on any failure.
+        """
+        doc_text = _doc_context_text(chunk.document)
+        chunk_text = (
+            f"{chunk.context_prefix}: {chunk.content}"
+            if chunk.context_prefix
+            else chunk.content
         )
+        title_text = chunk.context_prefix or chunk.content[:200]
 
-        if result.has_errors():
-            logger.warning(
-                "Embedding batch for document %s had %d error(s): %s",
-                document_id,
-                len(result.errors),
-                result.errors,
+        try:
+            result = self.embedding_processor.embed_batch(
+                [chunk_text, title_text, doc_text]
+            )
+            embeddings = result.embeddings
+            chunk.embedding = embeddings[0]
+            chunk.embedding_title = embeddings[1]
+            chunk.embedding_doc = embeddings[2]
+            chunk.save(
+                update_fields=["embedding", "embedding_title", "embedding_doc"]
+            )
+
+            if result.has_errors():
+                logger.warning(
+                    "Embedding errors for chunk %s (document %s): %s",
+                    chunk.id,
+                    chunk.document_id,
+                    result.errors,
+                )
+        except (
+            EmbeddingError,
+            EmbeddingValidationError,
+            RuntimeError,
+            Exception,
+        ) as e:
+            logger.error(
+                "Failed to embed chunk %s (document %s): %s",
+                chunk.id,
+                chunk.document_id,
+                e,
             )
 
     def _finalize_document(self, document_id: str) -> None:

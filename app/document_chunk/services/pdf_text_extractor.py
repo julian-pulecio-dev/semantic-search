@@ -1,11 +1,12 @@
 import logging
+import os
+import tempfile
 import boto3
 import pdfplumber
 
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import List
-from io import BytesIO
 
 from document_chunk.services.exceptions import DocumentProcessingError
 
@@ -38,6 +39,10 @@ class PDFTextExtractor:
         """
         Fetches the PDF at s3://bucket/key and returns a list of page dicts.
 
+        The file is streamed to a temporary file on disk so pdfplumber works
+        from a file path rather than an in-memory buffer, avoiding double RAM
+        usage (S3 body + BytesIO copy).
+
         Args:
             bucket: The S3 bucket name.
             key: The S3 key for the document.
@@ -51,36 +56,40 @@ class PDFTextExtractor:
         Raises:
             DocumentProcessingError: If the file cannot be fetched or parsed.
         """
-        file_stream = self._get_s3_file(bucket, key)
-        return self._pdf_to_text(file_stream)
+        tmp_path = self._download_to_temp(bucket, key)
+        try:
+            return self._pdf_to_text(tmp_path)
+        finally:
+            os.unlink(tmp_path)
 
-    def _get_s3_file(self, bucket: str, key: str) -> BytesIO:
+    def _download_to_temp(self, bucket: str, key: str) -> str:
         """
-        Fetches the file from S3 and returns a BytesIO stream.
+        Streams the S3 object to a temporary file and returns its path.
 
-        Args:
-            bucket: The S3 bucket name.
-            key: The S3 key for the document.
-        Returns:
-            A BytesIO stream of the file content.
         Raises:
             DocumentProcessingError: If the file cannot be fetched from S3.
         """
         try:
             response = self.s3_client.get_object(Bucket=bucket, Key=key)
-            return BytesIO(response["Body"].read())
+            stream = response["Body"]
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=".pdf"
+            ) as tmp:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    tmp.write(chunk)
+                return tmp.name
         except Exception as e:
             raise DocumentProcessingError(
                 f"Could not fetch s3://{bucket}/{key}: {e}"
             ) from e
 
-    def _pdf_to_text(self, file_stream: BytesIO) -> List[dict]:
+    def _pdf_to_text(self, file_path: str) -> List[dict]:
         """
         Converts a PDF file stream to a list of page dicts with page number,
         text, and word-level bounding box coordinates.
 
         Args:
-            file_stream: A BytesIO stream of the PDF file.
+            file_path: Path to the PDF file on disk.
         Returns:
             A list of dicts, each containing 'page_number', 'text', and 'words'.
         Raises:
@@ -89,7 +98,7 @@ class PDFTextExtractor:
         try:
             pages_output = []
 
-            with pdfplumber.open(file_stream) as pdf:
+            with pdfplumber.open(file_path) as pdf:
                 for page_number, page in enumerate(pdf.pages, start=1):
                     result = self._extract_page_text(page)
 

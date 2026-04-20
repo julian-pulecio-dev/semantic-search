@@ -12,18 +12,28 @@ from document_chunk.services.exceptions.embedding_exceptions import (
     EmbeddingError,
 )
 
-
-def _batch_result(n, base=0.1):
-    """
-    Build a BatchEmbeddingResult for n chunks with 3*n embeddings
-    (chunk / title / doc), each filled with a distinct float value.
-    """
-    embeddings = [
-        [round(base + i * 0.1, 1)] * 1024 for i in range(3 * n)
-    ]
-    return BatchEmbeddingResult(embeddings=embeddings, errors={}, throttle_count=0)
-
 User = get_user_model()
+
+_EMBEDDING = [0.1] * 1024
+_BATCH_RESULT = BatchEmbeddingResult(
+    embeddings=[_EMBEDDING, _EMBEDDING, _EMBEDDING],
+    errors={},
+    throttle_count=0,
+)
+_POLYGONS = [{"page_number": 1, "points": [[0, 0], [1, 0], [1, 1], [0, 1]]}]
+
+
+def _chunk_data(chunk_index=0, content="chunk text", bounding_polygons=None):
+    return {
+        "content": content,
+        "chunk_index": chunk_index,
+        "section_type": "Legal",
+        "section_title": "chunk text",
+        "context_prefix": "[Legal] chunk text",
+        "bounding_polygons": (
+            bounding_polygons if bounding_polygons is not None else _POLYGONS
+        ),
+    }
 
 
 class TestChunkEmbeddingServiceProcessBatch(TestCase):
@@ -38,74 +48,122 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
             embedding_batches_total=1,
             embedding_batches_done=0,
         )
-        self.chunk1 = DocumentChunk.objects.create(
-            document=self.document,
-            content="first chunk",
-            chunk_index=0,
-        )
-        self.chunk2 = DocumentChunk.objects.create(
-            document=self.document,
-            content="second chunk",
-            chunk_index=1,
-        )
         self.mock_processor = MagicMock()
+        self.mock_processor.embed_batch.return_value = _BATCH_RESULT
         self.service = ChunkEmbeddingService(
-            embedding_processor=self.mock_processor
+            embedding_processor=self.mock_processor,
         )
 
-    def _chunk_ids(self):
-        return [str(self.chunk1.id), str(self.chunk2.id)]
+    # --- persistence ---
 
-    # --- embedding attachment ---
+    def test_persists_chunk_to_database(self):
+        self.service.process_batch(
+            str(self.document.id), [_chunk_data(chunk_index=0)]
+        )
 
-    def test_attaches_embeddings_to_chunks(self):
-        self.mock_processor.embed_batch.return_value = _batch_result(2)
+        chunk = DocumentChunk.objects.get(
+            document=self.document, chunk_index=0
+        )
+        self.assertEqual(chunk.content, "chunk text")
+        self.assertEqual(chunk.section_type, "Legal")
 
-        self.service.process_batch(str(self.document.id), self._chunk_ids())
+    def test_persists_bounding_polygons_from_message(self):
+        self.service.process_batch(
+            str(self.document.id), [_chunk_data(chunk_index=0)]
+        )
 
+        chunk = DocumentChunk.objects.get(
+            document=self.document, chunk_index=0
+        )
+        self.assertEqual(chunk.bounding_polygons, _POLYGONS)
+
+    def test_persists_null_bounding_polygons_when_absent(self):
+        self.service.process_batch(
+            str(self.document.id),
+            [_chunk_data(chunk_index=0, bounding_polygons=None)],
+        )
+
+        chunk = DocumentChunk.objects.get(
+            document=self.document, chunk_index=0
+        )
+        self.assertIsNone(chunk.bounding_polygons)
+
+    def test_persists_multiple_chunks(self):
+        self.service.process_batch(
+            str(self.document.id),
+            [
+                _chunk_data(chunk_index=0),
+                _chunk_data(chunk_index=1, content="second"),
+            ],
+        )
+
+        self.assertEqual(
+            DocumentChunk.objects.filter(document=self.document).count(), 2
+        )
+
+    # --- embeddings ---
+
+    def test_attaches_embeddings_to_persisted_chunk(self):
         import numpy as np
 
-        self.chunk1.refresh_from_db()
-        self.chunk2.refresh_from_db()
-        self.assertTrue(np.allclose(self.chunk1.embedding, [0.1] * 1024))
-        self.assertTrue(np.allclose(self.chunk2.embedding, [0.2] * 1024))
-
-    def test_leaves_embeddings_null_when_bedrock_raises(self):
-        self.mock_processor.embed_batch.side_effect = EmbeddingError("timeout")
-
-        self.service.process_batch(str(self.document.id), self._chunk_ids())
-
-        self.chunk1.refresh_from_db()
-        self.chunk2.refresh_from_db()
-        self.assertIsNone(self.chunk1.embedding)
-        self.assertIsNone(self.chunk2.embedding)
-
-    def test_leaves_embeddings_null_when_raise_on_errors_raises(self):
-        self.mock_processor.embed_batch.return_value = BatchEmbeddingResult(
-            embeddings=[None] * 6,
-            errors={0: EmbeddingError("err"), 1: EmbeddingError("err")},
-            throttle_count=0,
+        self.service.process_batch(
+            str(self.document.id), [_chunk_data(chunk_index=0)]
         )
 
-        self.service.process_batch(str(self.document.id), self._chunk_ids())
+        chunk = DocumentChunk.objects.get(
+            document=self.document, chunk_index=0
+        )
+        self.assertTrue(np.allclose(chunk.embedding, _EMBEDDING))
+        self.assertTrue(np.allclose(chunk.embedding_title, _EMBEDDING))
+        self.assertTrue(np.allclose(chunk.embedding_doc, _EMBEDDING))
 
-        self.chunk1.refresh_from_db()
-        self.assertIsNone(self.chunk1.embedding)
+    def test_leaves_embeddings_null_when_embed_batch_raises(self):
+        self.mock_processor.embed_batch.side_effect = EmbeddingError("timeout")
+
+        self.service.process_batch(
+            str(self.document.id), [_chunk_data(chunk_index=0)]
+        )
+
+        chunk = DocumentChunk.objects.get(
+            document=self.document, chunk_index=0
+        )
+        self.assertIsNone(chunk.embedding)
+        self.assertIsNone(chunk.embedding_title)
+        self.assertIsNone(chunk.embedding_doc)
+
+    def test_continues_to_next_chunk_when_embedding_fails(self):
+        self.mock_processor.embed_batch.side_effect = [
+            EmbeddingError("fail"),
+            _BATCH_RESULT,
+        ]
+
+        self.service.process_batch(
+            str(self.document.id),
+            [
+                _chunk_data(chunk_index=0),
+                _chunk_data(chunk_index=1, content="second"),
+            ],
+        )
+
+        chunk0 = DocumentChunk.objects.get(
+            document=self.document, chunk_index=0
+        )
+        chunk1 = DocumentChunk.objects.get(
+            document=self.document, chunk_index=1
+        )
+        self.assertIsNone(chunk0.embedding)
+        self.assertIsNotNone(chunk1.embedding)
 
     # --- document finalisation ---
 
     def test_increments_embedding_batches_done(self):
-        self.mock_processor.embed_batch.return_value = _batch_result(2)
-
-        self.service.process_batch(str(self.document.id), self._chunk_ids())
+        self.service.process_batch(str(self.document.id), [_chunk_data()])
 
         self.document.refresh_from_db()
         self.assertEqual(self.document.embedding_batches_done, 1)
 
     def test_marks_document_processed_when_all_batches_done_and_no_nulls(self):
-        self.mock_processor.embed_batch.return_value = _batch_result(2)
-
-        self.service.process_batch(str(self.document.id), self._chunk_ids())
+        self.service.process_batch(str(self.document.id), [_chunk_data()])
 
         self.document.refresh_from_db()
         self.assertEqual(self.document.status, Document.Status.PROCESSED)
@@ -115,7 +173,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
     ):
         self.mock_processor.embed_batch.side_effect = EmbeddingError("fail")
 
-        self.service.process_batch(str(self.document.id), self._chunk_ids())
+        self.service.process_batch(str(self.document.id), [_chunk_data()])
 
         self.document.refresh_from_db()
         self.assertEqual(self.document.status, Document.Status.INCOMPLETED)
@@ -124,12 +182,9 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         self.document.embedding_batches_total = 3
         self.document.save(update_fields=["embedding_batches_total"])
 
-        self.mock_processor.embed_batch.return_value = _batch_result(2)
-
-        self.service.process_batch(str(self.document.id), self._chunk_ids())
+        self.service.process_batch(str(self.document.id), [_chunk_data()])
 
         self.document.refresh_from_db()
-        # Still PROCESSING — only 1 of 3 batches done
         self.assertEqual(self.document.status, Document.Status.PROCESSING)
         self.assertEqual(self.document.embedding_batches_done, 1)
 
@@ -137,24 +192,14 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         self.document.embedding_batches_total = None
         self.document.save(update_fields=["embedding_batches_total"])
 
-        self.mock_processor.embed_batch.return_value = _batch_result(2)
-
-        self.service.process_batch(str(self.document.id), self._chunk_ids())
+        self.service.process_batch(str(self.document.id), [_chunk_data()])
 
         self.document.refresh_from_db()
         self.assertEqual(self.document.status, Document.Status.PROCESSING)
 
-    def test_skips_gracefully_when_no_chunks_found(self):
+    def test_skips_gracefully_when_document_not_found(self):
         import uuid
 
-        self.service.process_batch(str(self.document.id), [str(uuid.uuid4())])
+        self.service.process_batch(str(uuid.uuid4()), [_chunk_data()])
 
-        # No exception, document still finalised (batch counted as done)
-        self.document.refresh_from_db()
-        self.assertEqual(self.document.embedding_batches_done, 1)
-
-    def test_does_not_raise_when_document_not_found(self):
-        import uuid
-
-        # Should log and return without raising
-        self.service.process_batch(str(uuid.uuid4()), self._chunk_ids())
+        self.assertEqual(DocumentChunk.objects.count(), 0)
