@@ -45,7 +45,7 @@ class UploadSessionSerializer(serializers.Serializer):
     expires_at = serializers.DateTimeField(read_only=True)
 
 
-class DocumentSerializer(serializers.ModelSerializer):
+class UploadSessionDocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = ["id", "status", "s3_key", "uploaded_at"]
@@ -53,7 +53,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 
 
 class UploadSessionDetailSerializer(serializers.ModelSerializer):
-    document = DocumentSerializer(read_only=True)
+    document = UploadSessionDocumentSerializer(read_only=True)
 
     class Meta:
         model = UploadSession

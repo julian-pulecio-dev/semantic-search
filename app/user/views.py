@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.core.mail import send_mail
 from django.conf import settings
+from drf_spectacular.utils import extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -40,6 +41,7 @@ class ListUsersView(BaseUserView, generics.ListAPIView):
 class ForgotPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(request=ForgotPasswordSerializer, responses={200: None})
     def post(self, request):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -74,6 +76,7 @@ class ForgotPasswordView(APIView):
 class ResetPasswordView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(request=ResetPasswordSerializer, responses={200: None})
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

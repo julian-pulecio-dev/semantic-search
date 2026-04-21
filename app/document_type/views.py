@@ -49,6 +49,7 @@ class UpdateDocumentTypeView(generics.UpdateAPIView):
 
 
 class DeleteDocumentTypeView(generics.DestroyAPIView):
+    serializer_class = DocumentTypeSerializer
     permission_classes = [permissions.IsAdminUser]
     authentication_classes = [JWTAuthentication]
 

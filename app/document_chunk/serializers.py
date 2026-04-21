@@ -12,9 +12,6 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
             "section_type",
             "section_title",
             "context_prefix",
-            "embedding",
-            "embedding_title",
-            "embedding_doc",
             "chunk_index",
             "bounding_polygons",
             "created_at",
@@ -22,9 +19,6 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "page",
-            "embedding",
-            "embedding_title",
-            "embedding_doc",
             "created_at",
         ]
 
