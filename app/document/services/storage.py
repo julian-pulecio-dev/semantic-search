@@ -1,3 +1,4 @@
+import io
 import boto3
 from document.services.exceptions.storage_exceptions import (
     S3FileNotFoundError,
@@ -141,3 +142,16 @@ class S3FileLoaderService:
         """
         region = self.s3_client.meta.region_name
         return f"https://{self.bucket_name}.s3.{region}.amazonaws.com/{key}"
+
+    @handle_storage_errors
+    def upload_file(self, key: str, body: bytes, content_type: str) -> bool:
+        """Upload a file to S3.
+
+        Arguments:
+            file_stream: A file-like object to upload.
+            key (str): The S3 key where the file will be stored.
+        Returns:
+            bool: True if the file was uploaded successfully.
+        """
+        self.s3_client.upload_fileobj(io.BytesIO(body), self.bucket_name, key)
+        return True

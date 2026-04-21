@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from app.document.services.storage import S3FileLoaderService
+from document.services.storage import S3FileLoaderService
 from document.models import Document
 from document.services.exceptions import handle_persistence_errors
 from document_page.models import DocumentPage
@@ -39,6 +39,7 @@ class DocumentPageProcessor:
         )
 
     def _upload_page(self, s3_key: str, pdf_bytes: bytes) -> None:
+        logger.info("Uploading page to S3 with key %s", s3_key)
         self.s3_file_loader.upload_file(
             key=s3_key,
             body=pdf_bytes,

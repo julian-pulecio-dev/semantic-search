@@ -17,7 +17,9 @@ class DocumentPage(models.Model):
         related_name="pages",
         db_index=True,
     )
-
+    s3_key = models.CharField(
+        max_length=255, unique=True, null=True, blank=True, editable=False
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     number_of_chunks = models.PositiveIntegerField(
