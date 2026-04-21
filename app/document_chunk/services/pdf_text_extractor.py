@@ -2,7 +2,7 @@ import logging
 import os
 import tempfile
 import boto3
-import pdfplumber
+import pymupdf
 
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -39,7 +39,7 @@ class PDFTextExtractor:
         """
         Fetches the PDF at s3://bucket/key and returns a list of page dicts.
 
-        The file is streamed to a temporary file on disk so pdfplumber works
+        The file is streamed to a temporary file on disk so pymupdf works
         from a file path rather than an in-memory buffer, avoiding double RAM
         usage (S3 body + BytesIO copy).
 
@@ -98,8 +98,8 @@ class PDFTextExtractor:
         try:
             pages_output = []
 
-            with pdfplumber.open(file_path) as pdf:
-                for page_number, page in enumerate(pdf.pages, start=1):
+            with pymupdf.open(file_path) as pdf:
+                for page_number, page in enumerate(pdf, start=1):
                     result = self._extract_page_text(page)
 
                     if result["text"]:
@@ -130,17 +130,22 @@ class PDFTextExtractor:
         for two-column layouts.
 
         Args:
-            page: A pdfplumber page object.
+            page: A pymupdf page object.
         Returns:
             A dict with:
               - 'text': the extracted text string (empty string if none).
-              - 'words': list of word dicts from pdfplumber (empty list if none).
+              - 'words': list of word dicts with keys 'text', 'x0', 'x1',
+                         'top', 'bottom' (empty list if none).
         """
-        simple_text = page.extract_text()
+        simple_text = page.get_text("text")
         if not simple_text:
             return {"text": "", "words": []}
 
-        words = page.extract_words()
+        raw_words = page.get_text("words")
+        words = [
+            {"text": w[4], "x0": w[0], "x1": w[2], "top": w[1], "bottom": w[3]}
+            for w in raw_words
+        ]
 
         if words and self._is_two_column_layout(page, words):
             text = self._extract_two_columns(page, words)
@@ -162,12 +167,12 @@ class PDFTextExtractor:
         physical dimensions of the PDF.
 
         Args:
-            page: A pdfplumber page object.
+            page: A pymupdf page object.
             words: A list of word dicts extracted from the page.
         Returns:
             True if the page likely has a two-column layout, False otherwise.
         """
-        page_width = page.width
+        page_width = page.rect.width
 
         # Normalise x0 to [0, 1] so thresholds are dimension-independent.
         relative_x0 = [w["x0"] / page_width for w in words]
@@ -194,12 +199,12 @@ class PDFTextExtractor:
         lines in reading order (left column first, then right).
 
         Args:
-            page: A pdfplumber page object.
+            page: A pymupdf page object.
             words: A list of word dicts extracted from the page.
         Returns:
             The extracted text from the page with columns correctly ordered.
         """
-        mid_x = page.width / 2
+        mid_x = page.rect.width / 2
 
         left = [w for w in words if w["x0"] < mid_x]
         right = [w for w in words if w["x0"] >= mid_x]
