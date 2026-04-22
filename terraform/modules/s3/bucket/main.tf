@@ -30,3 +30,8 @@ resource "aws_s3_bucket_cors_configuration" "s3_bucket" {
     max_age_seconds = 3000
   }
 }
+
+resource "aws_s3_bucket_notification" "eventbridge" {
+  bucket      = aws_s3_bucket.s3_bucket.id
+  eventbridge = true
+}

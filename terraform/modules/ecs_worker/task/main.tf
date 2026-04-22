@@ -1,4 +1,4 @@
-resource "aws_cloudwatch_log_group" "ecs_page_slicing" {
+resource "aws_cloudwatch_log_group" "ecs_worker" {
   name              = "/ecs/${var.name}"
   retention_in_days = 14
 }
@@ -86,8 +86,8 @@ resource "aws_iam_role_policy_attachment" "ecs_sqs_consume_attach" {
   policy_arn = aws_iam_policy.ecs_sqs_consume.arn
 }
 
-resource "aws_iam_policy" "ecs_sqs_send_page_slicing" {
-  name = "${var.name}-sqs-send-page-slicing"
+resource "aws_iam_policy" "ecs_sqs_send_worker" {
+  name = "${var.name}-sqs-send-worker"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -104,12 +104,12 @@ resource "aws_iam_role_policy_attachment" "ecs_bedrock_nova_attach" {
   policy_arn = aws_iam_policy.ecs_bedrock_nova.arn
 }
 
-resource "aws_iam_role_policy_attachment" "ecs_sqs_send_page_slicing_attach" {
+resource "aws_iam_role_policy_attachment" "ecs_sqs_send_worker_attach" {
   role       = aws_iam_role.ecs_task.name
-  policy_arn = aws_iam_policy.ecs_sqs_send_page_slicing.arn
+  policy_arn = aws_iam_policy.ecs_sqs_send_worker.arn
 }
 
-resource "aws_ecs_task_definition" "page_slicing" {
+resource "aws_ecs_task_definition" "worker" {
   family                   = var.name
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
@@ -121,21 +121,21 @@ resource "aws_ecs_task_definition" "page_slicing" {
 
   container_definitions = jsonencode([
     {
-      name      = "page-slicing"
+      name      = "worker"
       image     = "julianpuleciodev/semantic-search"
       essential = true
       cpu       = 256
       memory    = 512
-      command   = ["python", "-m", "workers.document_page_slicing.run"]
+      command   = ["python", "-m", var.workers_command]
 
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          # One log group, one stream per task: page-slicing/page-slicing/{task-id}
+          # One log group, one stream per task: worker/worker/{task-id}
           # Streams persist in CloudWatch after the task is stopped or scaled in.
-          awslogs-group         = aws_cloudwatch_log_group.ecs_page_slicing.name
+          awslogs-group         = aws_cloudwatch_log_group.ecs_worker.name
           awslogs-region        = "us-east-1"
-          awslogs-stream-prefix = "page-slicing"
+          awslogs-stream-prefix = "worker"
         }
       }
 

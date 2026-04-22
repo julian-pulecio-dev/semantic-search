@@ -1,4 +1,4 @@
-resource "aws_ecs_service" "doc_chunking" {
+resource "aws_ecs_service" "ecs_service" {
   name            = var.name
   cluster         = var.cluster_arn
   task_definition = var.task_definition_arn

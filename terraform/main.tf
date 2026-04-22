@@ -14,6 +14,11 @@ data "aws_secretsmanager_secret_version" "db_user" {
   secret_id = data.aws_secretsmanager_secret.db_user.id
 }
 
+module "policy_eventbridge_cloudwatch" {
+  source = "./modules/policies/policy_eventbridge_cloudwatch"
+  name = "${var.name}-eventbridge-cloudwatch-policy"
+}
+
 module "s3" {
   source = "./modules/s3"
 }
@@ -23,14 +28,14 @@ module "sqs_sclicing" {
   name = "${var.name}-sqs-slicing"
 }
 
-module "sqs_embedding" {
-  source = "./modules/sqs"
-  name   = "${var.name}-sqs-embedding"
-}
 
 module "eventbridge" {
+  name = "${var.name}-eventbridge"
+  detail_type = ["Object Created"]
+  event_prefix = "documents/"
+  event_source = ["aws.s3"]
   source = "./modules/event_bridge"
-  bucket_name = module.s3.bucket_name
+  s3_bucket_name = module.s3.bucket_name
   sqs_queue_arn = module.sqs_sclicing.arn
   sqs_queue_url = module.sqs_sclicing.url
 } 
@@ -65,6 +70,7 @@ module "ecs_worker" {
   db_port = module.rds.database_port
   s3_bucket_name = module.s3.bucket_name
   desired_count = var.ecs_desired_count
+  workers_command = "workers.document_page_slicing.run"
 }
 
 # module "ecs_doc_chunking" {

@@ -18,6 +18,12 @@ class DocumentPageProcessor:
     pdf_page_extractor: Optional[PDFPageExtractor] = field(default=None)
     s3_file_loader: Optional[S3FileLoaderService] = field(default=None)
 
+    def _document_is_locked(self) -> bool:
+        return self.document.status != Document.Status.PENDING
+
+    def _lock_document(self) -> None:
+        self._update_document_status(Document.Status.PROCESSING)
+
     def __post_init__(self):
         if self.pdf_page_extractor is None:
             self.pdf_page_extractor = PDFPageExtractor()
@@ -25,8 +31,6 @@ class DocumentPageProcessor:
             self.s3_file_loader = S3FileLoaderService(
                 os.environ["S3_BUCKET_NAME"]
             )
-
-        self._update_document_status(Document.Status.PROCESSING)
 
     @handle_persistence_errors
     def _update_document_status(self, status: str) -> None:
@@ -55,6 +59,14 @@ class DocumentPageProcessor:
 
     def process(self) -> List[DocumentPage]:
         logger.info("Processing document %s", self.document.id)
+
+        if self._document_is_locked():
+            logger.warning(
+                "Document %s is already being processed by another worker",
+                self.document.id,
+            )
+            return []
+        self._lock_document()
 
         document_stream = self.s3_file_loader.get_file(self.document.s3_key)
         pages: List[DocumentPage] = []

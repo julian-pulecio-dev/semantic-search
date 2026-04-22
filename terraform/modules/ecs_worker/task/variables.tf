@@ -29,3 +29,7 @@ variable "secret_variables" {
 variable "sqs_queue_arn" {
   type = string
 }
+
+variable "workers_command" {
+  type = string
+}

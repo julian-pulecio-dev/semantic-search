@@ -1,4 +1,4 @@
-resource "aws_appautoscaling_target" "doc_page_slicing" {
+resource "aws_appautoscaling_target" "ecs_worker" {
   min_capacity       = 0                                 # permite escalar a 0
   max_capacity       = var.max_capacity
   resource_id        = "service/${var.cluster_name}/${var.service_name}"
@@ -11,9 +11,9 @@ resource "aws_appautoscaling_target" "doc_page_slicing" {
 resource "aws_appautoscaling_policy" "scale_out" {
   name               = "${var.name}-scale-out"
   policy_type        = "StepScaling"
-  resource_id        = aws_appautoscaling_target.doc_page_slicing.resource_id
-  scalable_dimension = aws_appautoscaling_target.doc_page_slicing.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.doc_page_slicing.service_namespace
+  resource_id        = aws_appautoscaling_target.ecs_worker.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_worker.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs_worker.service_namespace
 
   step_scaling_policy_configuration {
     adjustment_type          = "ExactCapacity"
@@ -90,9 +90,9 @@ resource "aws_cloudwatch_metric_alarm" "scale_out" {
 resource "aws_appautoscaling_policy" "scale_in" {
   name               = "${var.name}-scale-in"
   policy_type        = "StepScaling"
-  resource_id        = aws_appautoscaling_target.doc_page_slicing.resource_id
-  scalable_dimension = aws_appautoscaling_target.doc_page_slicing.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.doc_page_slicing.service_namespace
+  resource_id        = aws_appautoscaling_target.ecs_worker.resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs_worker.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs_worker.service_namespace
 
   step_scaling_policy_configuration {
     adjustment_type          = "ExactCapacity"           # force to 0 directly

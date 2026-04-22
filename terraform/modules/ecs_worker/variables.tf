@@ -76,3 +76,8 @@ variable "desired_count" {
   default     = null
   nullable    = true
 }
+
+variable "workers_command" {
+  description = "The command to run in the ECS worker container"
+  type        = string
+}

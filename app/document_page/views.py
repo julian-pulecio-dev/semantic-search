@@ -6,6 +6,7 @@ from document.services.storage import S3FileLoaderService
 
 BUCKET_NAME = os.environ.get("S3_BUCKET_NAME")
 
+
 class DocumentPageListCreateView(generics.ListCreateAPIView):
     serializer_class = DocumentPageSerializer
     permission_classes = [permissions.AllowAny]
