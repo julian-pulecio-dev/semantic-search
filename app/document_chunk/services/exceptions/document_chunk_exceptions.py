@@ -8,7 +8,7 @@ class DocumentProcessingError(Exception):
     Base domain exception for the document chunk processing pipeline.
     Catch this to handle any processing failure regardless of cause.
     """
-
+    
     pass
 
 

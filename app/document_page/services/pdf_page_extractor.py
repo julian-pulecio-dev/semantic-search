@@ -1,11 +1,11 @@
 import logging
 from dataclasses import dataclass
 from typing import Generator
-
 import pymupdf
 from botocore.response import StreamingBody
 
-from document_chunk.services.exceptions import DocumentProcessingError
+from document.services.exceptions import DocumentProcessingError
+from document.models import Document
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,9 @@ class PageData:
 MAX_PAGES = 5000
 MAX_SIZE_BYTES = 200 * 1024 * 1024
 
-
+@dataclass
 class PDFPageExtractor:
+    document: Document
 
     def _read_with_limit(self, body: StreamingBody) -> bytes:
         chunks = []
@@ -30,7 +31,8 @@ class PDFPageExtractor:
             total += len(chunk)
             if total > MAX_SIZE_BYTES:
                 raise DocumentProcessingError(
-                    f"PDF too large (limit: {MAX_SIZE_BYTES / 1024 / 1024:.0f} MB)"
+                    f"PDF too large (limit: {MAX_SIZE_BYTES / 1024 / 1024:.0f} MB)",
+                    self.document
                 )
             chunks.append(chunk)
 
@@ -42,11 +44,11 @@ class PDFPageExtractor:
         page_count = len(doc)
 
         if page_count == 0:
-            raise DocumentProcessingError("PDF has no pages")
+            raise DocumentProcessingError("PDF has no pages", self.document)
 
         if page_count > MAX_PAGES:
             raise DocumentProcessingError(
-                f"Too many pages: {page_count} (limit: {MAX_PAGES})"
+                f"Too many pages: {page_count} (limit: {MAX_PAGES})", self.document
             )
 
         for i in range(page_count):
@@ -73,7 +75,8 @@ class PDFPageExtractor:
 
                 if doc.is_encrypted:
                     raise DocumentProcessingError(
-                        "PDF is encrypted and cannot be processed"
+                        "PDF is encrypted and cannot be processed",
+                        self.document
                     )
 
                 yield from self._split_document(doc)
@@ -87,4 +90,4 @@ class PDFPageExtractor:
 
         except Exception as e:
             logger.exception("Failed to split PDF")
-            raise DocumentProcessingError(f"Failed to split PDF: {e}") from e
+            raise DocumentProcessingError(f"Failed to split PDF: {e}", self.document) from e

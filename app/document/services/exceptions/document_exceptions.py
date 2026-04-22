@@ -8,7 +8,7 @@ class DocumentProcessingError(Exception):
 
     def __init__(self, message: str, document: Document = None):
         super().__init__(message)
-        if document is not None:
+        if document is not None and document.status != Document.Status.FAILED:
             document.status = Document.Status.FAILED
             document.save(update_fields=["status"])
     """
