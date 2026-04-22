@@ -19,7 +19,7 @@ class DocumentPageProcessor:
     s3_file_loader: Optional[S3FileLoaderService] = field(default=None)
 
     def _document_is_locked(self) -> bool:
-        return self.document.status != Document.Status.PENDING
+        return self.document.status not in (Document.Status.PENDING, Document.Status.FAILED)
 
     def _lock_document(self) -> None:
         self._update_document_status(Document.Status.PROCESSING)
