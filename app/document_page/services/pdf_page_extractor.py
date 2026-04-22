@@ -58,8 +58,6 @@ class PDFPageExtractor:
                 yield PageData(page_number=i + 1, pdf_bytes=page_doc.tobytes())
 
             finally:
-                if doc is not None:
-                    doc.close()
                 page_doc.close()
 
     def split_to_bytes_stream(
@@ -81,7 +79,7 @@ class PDFPageExtractor:
                 yield from self._split_document(doc)
 
             finally:
-                if doc:
+                if doc is not None:
                     doc.close()
 
         except DocumentProcessingError:
