@@ -3,7 +3,7 @@ import logging
 from typing import List
 
 from document_chunk.models import DocumentChunk
-from app.document_chunk.services.page_chunk_processor import (
+from document_chunk.services.page_chunk_processor import (
     _extract_section_context,
 )
 from document_chunk.services.embeddings_processor import EmbeddingsProcessor

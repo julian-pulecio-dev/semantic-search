@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 import os
-from app.document_chunk.services.page_chunk_processor import (
+from document_chunk.services.page_chunk_processor import (
     DocumentChunkProcessor,
 )
 
