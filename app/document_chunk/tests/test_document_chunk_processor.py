@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from document.models import Document
-from document_chunk.services.document_chunk_processor import (
+from app.document_chunk.services.page_chunk_processor import (
     Chunk,
     DocumentChunkProcessor,
 )

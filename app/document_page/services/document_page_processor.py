@@ -26,7 +26,7 @@ class DocumentPageProcessor:
 
     def __post_init__(self):
         if self.pdf_page_extractor is None:
-            self.pdf_page_extractor = PDFPageExtractor()
+            self.pdf_page_extractor = PDFPageExtractor(self.document)
         if self.s3_file_loader is None:
             self.s3_file_loader = S3FileLoaderService(
                 os.environ["S3_BUCKET_NAME"]
@@ -54,7 +54,7 @@ class DocumentPageProcessor:
     def _persist_page(self, s3_key: str) -> DocumentPage:
         return DocumentPage.objects.create(
             document=self.document,
-            s3_key=s3_key,
+            s3_key=s3_key, 
         )
 
     def process(self) -> List[DocumentPage]:

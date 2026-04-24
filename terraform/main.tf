@@ -28,17 +28,33 @@ module "sqs_sclicing" {
   name = "${var.name}-sqs-slicing"
 }
 
+module "sqs_chunking" {
+  source = "./modules/sqs"
+  name = "${var.name}-sqs-chunking"
+}
 
-module "eventbridge" {
+
+module "eventbridge_slicing" {
+  source = "./modules/event_bridge"
   name = "${var.name}-eventbridge"
   detail_type = ["Object Created"]
   event_prefix = "documents/"
   event_source = ["aws.s3"]
-  source = "./modules/event_bridge"
   s3_bucket_name = module.s3.bucket_name
   sqs_queue_arn = module.sqs_sclicing.arn
   sqs_queue_url = module.sqs_sclicing.url
 } 
+
+module "eventbridge_chunking" {
+  source = "./modules/event_bridge"
+  name = "${var.name}-eventbridge-chunking"
+  detail_type = ["Object Created"]
+  event_prefix = "page/"
+  event_source = ["aws.s3"]
+  s3_bucket_name = module.s3.bucket_name
+  sqs_queue_arn = module.sqs_chunking.arn
+  sqs_queue_url = module.sqs_chunking.url
+}
 
 module "vpc" {
   source = "./modules/vpc"
@@ -55,7 +71,7 @@ module "rds" {
   allowed_security_group_ids = [module.vpc.security_group_id]
 }
 
-module "ecs_worker" {
+module "ecs_page_slicing_worker" {
   source = "./modules/ecs_worker"
   name   = "${var.name}-page-slicing-worker"
   sqs_queue_arn = module.sqs_sclicing.arn
@@ -71,6 +87,24 @@ module "ecs_worker" {
   s3_bucket_name = module.s3.bucket_name
   desired_count = var.ecs_desired_count
   workers_command = "workers.document_page_slicing.run"
+}
+
+module "ecs_page_chunking_worker" {
+  source = "./modules/ecs_worker"
+  name   = "${var.name}-page-chunking-worker"
+  sqs_queue_arn = module.sqs_chunking.arn
+  sqs_queue_url = module.sqs_chunking.url
+  sqs_queue_name = module.sqs_chunking.name
+  subnet_ids = module.vpc.subnet_ids
+  security_group_id = module.vpc.security_group_id
+  db_name = var.db_name
+  db_user_secret_arn = data.aws_secretsmanager_secret.db_user.arn
+  db_password_secret_arn = data.aws_secretsmanager_secret.db_password.arn
+  db_host = module.rds.database_host
+  db_port = module.rds.database_port
+  s3_bucket_name = module.s3.bucket_name
+  desired_count = var.ecs_desired_count
+  workers_command = "workers.document_chunking.run"
 }
 
 # module "ecs_doc_chunking" {

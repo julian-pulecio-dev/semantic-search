@@ -71,7 +71,6 @@ class PDFPageExtractor:
             try:
                 pdf_bytes = self._read_with_limit(body)
                 doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-                del pdf_bytes
 
                 if doc.is_encrypted:
                     raise DocumentProcessingError(
@@ -82,7 +81,7 @@ class PDFPageExtractor:
                 yield from self._split_document(doc)
 
             finally:
-                if doc is not None:
+                if doc is not None and not doc.is_closed:
                     doc.close()
 
         except DocumentProcessingError:

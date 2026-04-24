@@ -4,6 +4,7 @@ from core.exceptions.base_exception_handler import BaseErrorHandler
 from document.models import Document
 
 
+
 class DocumentProcessingError(Exception):
 
     def __init__(self, message: str, document: Document = None):

@@ -4,9 +4,9 @@ import os
 import boto3
 
 from workers.handler import Handler
-from document.models import Document
-from document_page.services.document_page_processor import (
-    DocumentPageProcessor,
+from document.models import Page
+from document_chunk.services.page_chunk_processor import (
+    PageChunkProcessor,
 )
 from document.services.exceptions.document_exceptions import (
     DocumentProcessingError,
@@ -15,21 +15,7 @@ from document.services.exceptions.document_exceptions import (
 logger = logging.getLogger(__name__)
 
 
-class DocumentPageSlicingHandler(Handler):
-    """
-    Handler for processing SQS messages related to slicing documents into pages.
-    Expects messages to contain the S3 key of the document to process.
-    Workflow:
-    1. Retrieve the document from the database using the S3 key.
-    2. Process the document into pages.
-    3. Persist the pages and update the document status.
-    Error Handling:
-    - If the document is not found, log an error and skip processing.
-    - If any step of the processing fails, log the error and update the
-    document status to FAILED.
-
-    """
-
+class DocumentChunkingHandler(Handler):
     def __init__(self):
         self._sqs = None
 
@@ -45,36 +31,36 @@ class DocumentPageSlicingHandler(Handler):
         body = json.loads(message["Body"])
 
         try:
-            document_key = body["detail"]["object"]["key"]
+            page_key = body["detail"]["object"]["key"]
         except KeyError as e:
-            raise DocumentProcessingError(
+            raise ValueError(
                 f"Malformed message, missing field: {e}"
             ) from e
 
-        logger.info("Received message for document=%s", document_key)
-        self._chunk_and_dispatch(document_key)
+        logger.info("Received message for page=%s", page_key)
+        self._chunk_and_dispatch(page_key)
 
-    def _chunk_and_dispatch(self, document_key: str) -> None:
+    def _chunk_and_dispatch(self, page_key: str) -> None:
         try:
-            document = Document.objects.get(s3_key=document_key)
-        except Document.DoesNotExist:
-            raise DocumentProcessingError(
-                f"Document with key {document_key} not found in database"
+            page = Page.objects.get(s3_key=page_key)
+        except Page.DoesNotExist:
+            raise ValueError(
+                f"Page with key {page_key} not found in database"
             )
 
-        processor = DocumentPageProcessor(document=document)
+        processor = PageChunkProcessor(page=page)
 
-        pages = processor.process()
+        chunks = processor.process()
 
-        if not pages:
+        if not chunks:
             logger.info(
-                "Document %s produced no pages, nothing to dispatch",
-                document.id,
+                "Page %s produced no chunks, nothing to dispatch",
+                page.id,
             )
             return
 
     def on_success(self, message: dict) -> None:
-        logger.info("page message processed successfully")
+        logger.info("chunk message processed successfully")
 
     def on_error(self, message: dict, exception: Exception) -> None:
         logger.error(

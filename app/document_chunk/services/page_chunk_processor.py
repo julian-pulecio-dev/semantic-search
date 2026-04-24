@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import ClassVar, List, Optional, Tuple
 
 from document.models import Document
+from document_page.models import DocumentPage
 from document_chunk.services.chunk_bounding_polygon import ChunkBoundingPolygon
 from document_chunk.services.exceptions.document_chunk_exceptions import (
     DocumentProcessingError,
@@ -103,6 +104,8 @@ class Chunk:
     bounding_polygons: Optional[list] = field(
         default=None, hash=False, compare=False
     )
+    start_page: Optional[DocumentPage] = field(default=None)
+    end_page: Optional[DocumentPage] = field(default=None)
 
     def to_dict(self) -> dict:
         return {
@@ -112,11 +115,13 @@ class Chunk:
             "section_title": self.section_title,
             "context_prefix": self.context_prefix,
             "bounding_polygons": self.bounding_polygons,
+            "start_page": self.start_page,
+            "end_page": self.end_page,
         }
 
 
 @dataclass
-class DocumentChunkProcessor:
+class PageChunkProcessor:
     """
     Orchestrates the text-extraction, chunking, and polygon-resolution stage.
 
@@ -142,6 +147,7 @@ class DocumentChunkProcessor:
 
     CHUNK_BATCH_SIZE: ClassVar[int] = 5
 
+    page: DocumentPage
     document: Document
     pdf_extractor: Optional[PDFTextExtractor] = field(default=None)
     splitter: Optional[RecursiveCharacterTextSplitter] = field(default=None)
@@ -179,11 +185,11 @@ class DocumentChunkProcessor:
         """
         logger.info("Processing document %s", self.document.id)
 
-        pages = self.pdf_extractor.extract(
+        page = self.pdf_extractor.extract(
             os.environ["S3_BUCKET_NAME"],
-            self.document.s3_key,
+            self.page.s3_key,
         )
-        chunks = self._text_to_chunks(pages)
+        chunks = self._text_to_chunks(page)
 
         logger.info(
             "Generated %d chunks for document %s",
@@ -191,35 +197,35 @@ class DocumentChunkProcessor:
             self.document.id,
         )
 
-        batches = [
-            chunks[i: i + self.chunk_batch_size]
-            for i in range(0, len(chunks), self.chunk_batch_size)
-        ]
+        # batches = [
+        #     chunks[i: i + self.chunk_batch_size]
+        #     for i in range(0, len(chunks), self.chunk_batch_size)
+        # ]
 
-        if not batches:
-            self._update_document_status(Document.Status.PROCESSED)
-            logger.info(
-                "Document %s has no chunks, marked as PROCESSED",
-                self.document.id,
-            )
-            return []
+        # if not batches:
+        #     self._update_document_status(Document.Status.PROCESSED)
+        #     logger.info(
+        #         "Document %s has no chunks, marked as PROCESSED",
+        #         self.document.id,
+        #     )
+        #     return []
 
-        logger.info(
-            "Document %s: %d chunks in %d batches to dispatch",
-            self.document.id,
-            len(chunks),
-            len(batches),
-        )
+        # logger.info(
+        #     "Document %s: %d chunks in %d batches to dispatch",
+        #     self.document.id,
+        #     len(chunks),
+        #     len(batches),
+        # )
 
-        return batches
+        # return batches
 
-    def _text_to_chunks(self, pages_data: List[dict]) -> List[Chunk]:
+    def _text_to_chunks(self, page_data: dict) -> List[Chunk]:
         """
         Converts document text into Chunk objects with section context and
         resolved bounding polygons. Polygons are resolved in a single
         sequential pass to maintain correct cursor state across chunks.
         """
-        full_text = "\n\n".join(page["text"] for page in pages_data)
+        full_text = page_data["text"]
         raw_chunks = self.splitter.split_text(full_text)
 
         chunks = []
@@ -229,27 +235,20 @@ class DocumentChunkProcessor:
             section_type, section_title = _extract_section_context(text)
             context_prefix = f"[{section_type}] {section_title}"
 
-            try:
-                resolved, page_cursors = (
-                    self.bounding_polygon_resolver.resolve(
-                        text, pages_data, page_cursors
-                    )
-                )
-                bounding_polygons = [
-                    {
-                        "page_number": p.page_number,
-                        "points": [list(pt) for pt in p.points],
-                    }
-                    for p in resolved
-                ]
-            except Exception as e:
-                logger.error(
-                    "Failed to resolve polygons for chunk %d of document %s: %s",
-                    index,
-                    self.document.id,
-                    e,
-                )
-                bounding_polygons = None
+            bounding_polygons = None
+
+            logger.debug(
+                "Chunk %d: section_type=%s, section_title=%s, "
+                "context_prefix=%s, bounding_polygons=%s",
+                "content=%s",
+                index,
+                section_type,
+                section_title,
+                context_prefix,
+                bounding_polygons,
+                text[:50] + "..." if len(text) > 50 else text, 
+            )
+    
 
             chunks.append(
                 Chunk(
@@ -260,6 +259,8 @@ class DocumentChunkProcessor:
                     section_title=section_title,
                     context_prefix=context_prefix,
                     bounding_polygons=bounding_polygons,
+                    start_page=self.page,
+                    end_page=self.page,
                 )
             )
 

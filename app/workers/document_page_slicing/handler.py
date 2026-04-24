@@ -27,7 +27,6 @@ class DocumentPageSlicingHandler(Handler):
     - If the document is not found, log an error and skip processing.
     - If any step of the processing fails, log the error and update the
     document status to FAILED.
-
     """
 
     def __init__(self):
@@ -47,7 +46,7 @@ class DocumentPageSlicingHandler(Handler):
         try:
             document_key = body["detail"]["object"]["key"]
         except KeyError as e:
-            raise DocumentProcessingError(
+            raise ValueError(
                 f"Malformed message, missing field: {e}"
             ) from e
 
@@ -58,7 +57,7 @@ class DocumentPageSlicingHandler(Handler):
         try:
             document = Document.objects.get(s3_key=document_key)
         except Document.DoesNotExist:
-            raise DocumentProcessingError(
+            raise ValueError(
                 f"Document with key {document_key} not found in database"
             )
 
