@@ -7,9 +7,10 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
         model = DocumentChunk
         fields = [
             "id",
-            "page",
+            "document",
+            "start_page",
+            "end_page",
             "content",
-            "section_type",
             "section_title",
             "context_prefix",
             "chunk_index",
@@ -18,7 +19,9 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
-            "page",
+            "document",
+            "start_page",
+            "end_page",
             "created_at",
         ]
 

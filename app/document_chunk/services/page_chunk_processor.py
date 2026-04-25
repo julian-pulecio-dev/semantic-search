@@ -6,6 +6,7 @@ from typing import ClassVar, List, Optional, Tuple
 
 from document.models import Document
 from document_page.models import DocumentPage
+from document_chunk.models import DocumentChunk
 from document_chunk.services.chunk_bounding_polygon import ChunkBoundingPolygon
 from document_chunk.services.exceptions.document_chunk_exceptions import (
     DocumentProcessingError,
@@ -185,17 +186,18 @@ class PageChunkProcessor:
         """
         logger.info("Processing document %s", self.document.id)
 
-        page = self.pdf_extractor.extract(
+        pages = self.pdf_extractor.extract(
             os.environ["S3_BUCKET_NAME"],
             self.page.s3_key,
         )
-        chunks = self._text_to_chunks(page)
-
+        chunks = self._text_to_chunks(pages)
         logger.info(
             "Generated %d chunks for document %s",
             len(chunks),
             self.document.id,
         )
+
+        self._persist_chunks(chunks)
 
         # batches = [
         #     chunks[i: i + self.chunk_batch_size]
@@ -217,15 +219,49 @@ class PageChunkProcessor:
         #     len(batches),
         # )
 
-        # return batches
+        return chunks
+    
+    def _persist_chunks(self, chunks: List[Chunk]) -> None:
+        """
+        Persists chunks to the database with their bounding polygons.
 
-    def _text_to_chunks(self, page_data: dict) -> List[Chunk]:
+        This is called by the embedding worker once it receives a batch of
+        chunks from SQS. The chunking worker only returns Chunk objects with
+        the polygon data included — it does not persist anything itself.
+        """
+        for chunk in chunks:
+            try:
+                DocumentChunk.objects.create(
+                    document_id=chunk.document_id,
+                    content=chunk.content,
+                    chunk_index=chunk.chunk_index,
+                    section_type=chunk.section_type,
+                    section_title=chunk.section_title,
+                    context_prefix=chunk.context_prefix,
+                    bounding_polygons=chunk.bounding_polygons,
+                    start_page=chunk.start_page,
+                    end_page=chunk.end_page,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to persist chunk %d for document %s: %s",
+                    chunk.chunk_index,
+                    chunk.document_id,
+                    str(e),
+                )
+                raise DocumentPersistenceError(
+                    f"Failed to persist chunk {chunk.chunk_index} "
+                    f"for document {chunk.document_id}",
+                    self.document
+                ) from e
+
+    def _text_to_chunks(self, pages_data: List[dict]) -> List[Chunk]:
         """
         Converts document text into Chunk objects with section context and
         resolved bounding polygons. Polygons are resolved in a single
         sequential pass to maintain correct cursor state across chunks.
         """
-        full_text = page_data["text"]
+        full_text = " ".join(page_data["text"] for page_data in pages_data)
         raw_chunks = self.splitter.split_text(full_text)
 
         chunks = []

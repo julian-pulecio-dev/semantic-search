@@ -31,6 +31,7 @@ class DocumentChunk(models.Model):
     content = models.TextField()
 
     # contexto semántico
+    section_type = models.CharField(max_length=100, null=True, blank=True)
     section_title = models.CharField(max_length=500, null=True, blank=True)
     context_prefix = models.TextField(null=True, blank=True)
 

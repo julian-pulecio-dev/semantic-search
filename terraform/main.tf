@@ -49,7 +49,7 @@ module "eventbridge_chunking" {
   source = "./modules/event_bridge"
   name = "${var.name}-eventbridge-chunking"
   detail_type = ["Object Created"]
-  event_prefix = "page/"
+  event_prefix = "pages/"
   event_source = ["aws.s3"]
   s3_bucket_name = module.s3.bucket_name
   sqs_queue_arn = module.sqs_chunking.arn

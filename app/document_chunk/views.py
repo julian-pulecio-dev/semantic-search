@@ -30,13 +30,13 @@ class DocumentChunkListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         return (
-            DocumentChunk.objects.select_related("page")
-            .filter(page_id=self.kwargs["page_id"])
+            DocumentChunk.objects.select_related("start_page", "end_page")
+            .filter(document_id=self.kwargs["doc_id"])
             .order_by("chunk_index")
         )
 
     def perform_create(self, serializer):
-        serializer.save(page_id=self.kwargs["page_id"])
+        serializer.save(document_id=self.kwargs["doc_id"])
 
 
 class DocumentChunkRetrieveUpdateDestroyView(
@@ -46,7 +46,7 @@ class DocumentChunkRetrieveUpdateDestroyView(
     permission_classes = []
 
     def get_queryset(self):
-        return DocumentChunk.objects.filter(page_id=self.kwargs["page_id"])
+        return DocumentChunk.objects.filter(document_id=self.kwargs["doc_id"])
 
 
 class ChunkRefreshView(APIView):
@@ -56,9 +56,9 @@ class ChunkRefreshView(APIView):
         request=ChunkRefreshSerializer,
         responses={200: DocumentChunkSerializer},
     )
-    def patch(self, request, doc_id, page_id, pk):
+    def patch(self, request, doc_id, pk):
         chunk = generics.get_object_or_404(
-            DocumentChunk, id=pk, page_id=page_id
+            DocumentChunk, id=pk, document_id=doc_id
         )
 
         serializer = ChunkRefreshSerializer(data=request.data)

@@ -4,7 +4,7 @@ import os
 import boto3
 
 from workers.handler import Handler
-from document.models import Page
+from document_page.models import DocumentPage
 from document_chunk.services.page_chunk_processor import (
     PageChunkProcessor,
 )
@@ -42,13 +42,13 @@ class DocumentChunkingHandler(Handler):
 
     def _chunk_and_dispatch(self, page_key: str) -> None:
         try:
-            page = Page.objects.get(s3_key=page_key)
-        except Page.DoesNotExist:
+            page = DocumentPage.objects.get(s3_key=page_key)
+        except DocumentPage.DoesNotExist:
             raise ValueError(
                 f"Page with key {page_key} not found in database"
             )
 
-        processor = PageChunkProcessor(page=page)
+        processor = PageChunkProcessor(page=page, document=page.document)
 
         chunks = processor.process()
 
