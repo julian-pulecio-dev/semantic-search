@@ -21,3 +21,9 @@ variable "ecs_desired_count" {
   default  = null
   nullable = true
 }
+
+variable "cors_allowed_origins" {
+  description = "List of origins allowed to make cross-origin requests to the S3 bucket"
+  type        = list(string)
+  default     = ["*"]
+}

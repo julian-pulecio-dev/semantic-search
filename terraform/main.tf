@@ -20,7 +20,8 @@ module "policy_eventbridge_cloudwatch" {
 }
 
 module "s3" {
-  source = "./modules/s3"
+  source               = "./modules/s3"
+  cors_allowed_origins = var.cors_allowed_origins
 }
 
 module "sqs_sclicing" {

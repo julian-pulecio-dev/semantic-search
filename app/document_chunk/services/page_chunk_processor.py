@@ -4,23 +4,28 @@ import logging
 from dataclasses import dataclass, field
 from typing import ClassVar, List, Optional, Tuple
 
+from django.db import transaction
+from django.db.models import F, Max
+
 from document.models import Document
 from document_page.models import DocumentPage
 from document_chunk.models import DocumentChunk
 from document_chunk.services.chunk_bounding_polygon import ChunkBoundingPolygon
+from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from document_chunk.services.exceptions.document_chunk_exceptions import (
     DocumentProcessingError,
     DocumentInvalidStatusError,
     DocumentPersistenceError,
     handle_persistence_errors,
 )
+from document_chunk.services.exceptions.embedding_exceptions import EmbeddingError
 from document_chunk.services.pdf_text_extractor import PDFTextExtractor
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "DocumentChunkProcessor",
+    "PageChunkProcessor",
     "DocumentProcessingError",
     "DocumentInvalidStatusError",
     "DocumentPersistenceError",
@@ -77,6 +82,16 @@ def _extract_section_context(text: str) -> Tuple[str, str]:
     return section_type, section_title
 
 
+def _doc_context_text(document: Document) -> str:
+    filename = (
+        os.path.basename(document.s3_key or "")
+        .replace("_", " ")
+        .replace("-", " ")
+    )
+    name = os.path.splitext(filename)[0].strip()
+    return f"Documento legal: {name}" if name else "Documento legal"
+
+
 @dataclass(frozen=True)
 class Chunk:
     """
@@ -86,9 +101,6 @@ class Chunk:
     Bounding polygons are resolved here (in the chunking worker) because
     the resolver requires sequential cursor state across all chunks — it
     cannot be parallelised across embedding workers.
-
-    The embedding worker receives chunks via SQS, persists them with the
-    polygon data included, and attaches embeddings independently.
 
     context_prefix  — the contextual header prepended when building the chunk
                       embedding: "[section_type] section_title"
@@ -124,26 +136,23 @@ class Chunk:
 @dataclass
 class PageChunkProcessor:
     """
-    Orchestrates the text-extraction, chunking, and polygon-resolution stage.
+    Orchestrates the full processing pipeline for a single document page:
+    text extraction, chunking, polygon resolution, persistence, and embedding.
 
     Responsibilities
     ----------------
     1. Extract text and word-level coordinates from the PDF stored in S3.
     2. Split the full document text into context-aware chunks.
     3. Resolve bounding polygons for each chunk using sequential cursor state.
-    4. Return chunks grouped in batches ready for the embedding queue.
+    4. Persist chunks to the database.
+    5. Attach three embeddings per chunk (chunk / title / doc) via Bedrock Titan.
+    6. Finalise the document status once all embeddings are processed.
 
-    Polygon resolution must happen here because it requires a single sequential
-    pass over all chunks in order — it cannot be split across parallel workers.
-
-    The embedding worker only needs to persist chunks and attach embeddings.
-
-    Document status transitions managed here
-    -----------------------------------------
+    Document status transitions
+    ---------------------------
     PROCESSING  — set on __post_init__ (work has started)
-    PROCESSED   — set immediately when the document produces no chunks
-    (PROCESSED / INCOMPLETED are set by ChunkEmbeddingService once all
-     embedding batches have been counted for non-empty documents.)
+    PROCESSED   — set after finalisation if all chunk embeddings are present
+    INCOMPLETED — set after finalisation if any chunk embeddings are null
     """
 
     CHUNK_BATCH_SIZE: ClassVar[int] = 5
@@ -155,6 +164,7 @@ class PageChunkProcessor:
     bounding_polygon_resolver: Optional[ChunkBoundingPolygon] = field(
         default=None
     )
+    embedding_processor: Optional[EmbeddingsProcessor] = field(default=None)
     chunk_batch_size: int = field(default=CHUNK_BATCH_SIZE)
 
     def __post_init__(self):
@@ -174,15 +184,17 @@ class PageChunkProcessor:
         if self.bounding_polygon_resolver is None:
             self.bounding_polygon_resolver = ChunkBoundingPolygon()
 
+        if self.embedding_processor is None:
+            self.embedding_processor = EmbeddingsProcessor()
+
         self._update_document_status(Document.Status.PROCESSING)
 
-    def process(self) -> List[List[Chunk]]:
+    def process(self) -> List[Chunk]:
         """
-        Run the extraction, chunking, and polygon-resolution stage.
+        Run the full pipeline: extraction → chunking → persistence → embedding.
 
         Returns:
-            A list of batches, each containing up to CHUNK_BATCH_SIZE Chunk
-            objects with bounding_polygons already resolved.
+            The list of Chunk domain objects produced from the page.
         """
         logger.info("Processing document %s", self.document.id)
 
@@ -190,6 +202,10 @@ class PageChunkProcessor:
             os.environ["S3_BUCKET_NAME"],
             self.page.s3_key,
         )
+        actual_page_number = self._page_number_from_key()
+        for page_data in pages:
+            page_data["page_number"] = actual_page_number
+
         chunks = self._text_to_chunks(pages)
         logger.info(
             "Generated %d chunks for document %s",
@@ -197,63 +213,168 @@ class PageChunkProcessor:
             self.document.id,
         )
 
-        self._persist_chunks(chunks)
+        if not chunks:
+            logger.info(
+                "Page %s of document %s has no text, counting as processed",
+                self.page.id,
+                self.document.id,
+            )
+            self._finalize_document()
+            return []
 
-        # batches = [
-        #     chunks[i: i + self.chunk_batch_size]
-        #     for i in range(0, len(chunks), self.chunk_batch_size)
-        # ]
+        db_chunks = self._persist_chunks(chunks)
 
-        # if not batches:
-        #     self._update_document_status(Document.Status.PROCESSED)
-        #     logger.info(
-        #         "Document %s has no chunks, marked as PROCESSED",
-        #         self.document.id,
-        #     )
-        #     return []
+        for db_chunk in db_chunks:
+            self._attach_embeddings(db_chunk)
 
-        # logger.info(
-        #     "Document %s: %d chunks in %d batches to dispatch",
-        #     self.document.id,
-        #     len(chunks),
-        #     len(batches),
-        # )
+        self._finalize_document()
 
         return chunks
-    
-    def _persist_chunks(self, chunks: List[Chunk]) -> None:
-        """
-        Persists chunks to the database with their bounding polygons.
 
-        This is called by the embedding worker once it receives a batch of
-        chunks from SQS. The chunking worker only returns Chunk objects with
-        the polygon data included — it does not persist anything itself.
+    def _persist_chunks(self, chunks: List[Chunk]) -> List[DocumentChunk]:
         """
-        for chunk in chunks:
-            try:
-                DocumentChunk.objects.create(
-                    document_id=chunk.document_id,
-                    content=chunk.content,
-                    chunk_index=chunk.chunk_index,
-                    section_type=chunk.section_type,
-                    section_title=chunk.section_title,
-                    context_prefix=chunk.context_prefix,
-                    bounding_polygons=chunk.bounding_polygons,
-                    start_page=chunk.start_page,
-                    end_page=chunk.end_page,
+        Persists chunks to the database and returns the created DB objects.
+
+        Acquires a row-level lock on the document to prevent concurrent page
+        processors from assigning duplicate chunk_index values (race condition
+        on the unique_chunk_per_document constraint).
+        """
+        db_chunks = []
+        with transaction.atomic():
+            Document.objects.select_for_update().get(id=self.document.id)
+            start_index = self._next_chunk_index()
+            for local_offset, chunk in enumerate(chunks):
+                global_index = start_index + local_offset
+                try:
+                    db_chunk = DocumentChunk.objects.create(
+                        document_id=chunk.document_id,
+                        content=chunk.content,
+                        chunk_index=global_index,
+                        section_type=chunk.section_type,
+                        section_title=chunk.section_title,
+                        context_prefix=chunk.context_prefix,
+                        bounding_polygons=chunk.bounding_polygons,
+                        start_page=chunk.start_page,
+                        end_page=chunk.end_page,
+                    )
+                    db_chunks.append(db_chunk)
+                except Exception as e:
+                    logger.error(
+                        "Failed to persist chunk %d for document %s: %s",
+                        global_index,
+                        chunk.document_id,
+                        str(e),
+                    )
+                    raise DocumentPersistenceError(
+                        f"Failed to persist chunk {global_index} "
+                        f"for document {chunk.document_id}",
+                        self.document,
+                    ) from e
+        return db_chunks
+
+    def _attach_embeddings(self, chunk: DocumentChunk) -> None:
+        """
+        Generates three embeddings for the chunk and saves them.
+
+        embedding       → "[section_type] section_title: content"
+        embedding_title → "[section_type] section_title"
+        embedding_doc   → "Documento legal: <filename>"
+
+        Logs and leaves fields as None on any failure.
+        """
+        doc_text = _doc_context_text(self.document)
+        chunk_text = (
+            f"{chunk.context_prefix}: {chunk.content}"
+            if chunk.context_prefix
+            else chunk.content
+        )
+        title_text = chunk.context_prefix or chunk.content[:200]
+
+        try:
+            result = self.embedding_processor.embed_batch(
+                [chunk_text, title_text, doc_text]
+            )
+            embeddings = result.embeddings
+            chunk.embedding = embeddings[0]
+            chunk.embedding_title = embeddings[1]
+            chunk.embedding_doc = embeddings[2]
+            chunk.save(
+                update_fields=["embedding", "embedding_title", "embedding_doc"]
+            )
+
+            if result.has_errors():
+                logger.warning(
+                    "Embedding errors for chunk %s (document %s): %s",
+                    chunk.id,
+                    self.document.id,
+                    result.errors,
                 )
-            except Exception as e:
+        except (EmbeddingError, RuntimeError, Exception) as e:
+            logger.error(
+                "Failed to embed chunk %s (document %s): %s",
+                chunk.id,
+                self.document.id,
+                e,
+            )
+
+    def _finalize_document(self) -> None:
+        """
+        Atomically increments number_of_pages_processed and transitions
+        document status to PROCESSED or INCOMPLETED once all pages are done.
+        """
+        with transaction.atomic():
+            updated = Document.objects.filter(id=self.document.id).update(
+                number_of_pages_processed=F("number_of_pages_processed") + 1
+            )
+            if not updated:
                 logger.error(
-                    "Failed to persist chunk %d for document %s: %s",
-                    chunk.chunk_index,
-                    chunk.document_id,
-                    str(e),
+                    "Document %s not found when finalising",
+                    self.document.id,
                 )
-                raise DocumentPersistenceError(
-                    f"Failed to persist chunk {chunk.chunk_index} "
-                    f"for document {chunk.document_id}",
-                    self.document
-                ) from e
+                return
+
+            document = Document.objects.get(id=self.document.id)
+
+            if document.number_of_pages is None:
+                return
+
+            if document.number_of_pages_processed < document.number_of_pages:
+                return
+
+            has_null = DocumentChunk.objects.filter(
+                start_page__document=document, embedding__isnull=True
+            ).exists()
+
+            new_status = (
+                Document.Status.INCOMPLETED
+                if has_null
+                else Document.Status.PROCESSED
+            )
+            Document.objects.filter(id=self.document.id).update(status=new_status)
+
+            logger.info(
+                "Document %s finalised with status %s (%d/%d pages done)",
+                self.document.id,
+                new_status,
+                document.number_of_pages_processed,
+                document.number_of_pages,
+            )
+
+    def _page_number_from_key(self) -> int:
+        """
+        Extracts the 1-based page number from the page's S3 key.
+
+        Key format: pages/{document_id}/pages/page_{N}.pdf
+        """
+        filename = self.page.s3_key.rsplit("/", 1)[-1]  # "page_{N}.pdf"
+        return int(filename.removeprefix("page_").removesuffix(".pdf"))
+
+    def _next_chunk_index(self) -> int:
+        result = DocumentChunk.objects.filter(
+            document=self.document
+        ).aggregate(Max("chunk_index"))
+        max_index = result["chunk_index__max"]
+        return (max_index + 1) if max_index is not None else 0
 
     def _text_to_chunks(self, pages_data: List[dict]) -> List[Chunk]:
         """
@@ -261,35 +382,41 @@ class PageChunkProcessor:
         resolved bounding polygons. Polygons are resolved in a single
         sequential pass to maintain correct cursor state across chunks.
         """
-        full_text = " ".join(page_data["text"] for page_data in pages_data)
+        full_text = "\n\n".join(page_data["text"] for page_data in pages_data)
         raw_chunks = self.splitter.split_text(full_text)
 
         chunks = []
         page_cursors: dict = {}
 
-        for index, text in enumerate(raw_chunks):
+        for offset, text in enumerate(raw_chunks):
             section_type, section_title = _extract_section_context(text)
             context_prefix = f"[{section_type}] {section_title}"
 
-            bounding_polygons = None
+            polygons, page_cursors = self.bounding_polygon_resolver.resolve(
+                chunk_text=text,
+                pages=pages_data,
+                page_cursors=page_cursors,
+            )
+            bounding_polygons = [
+                {"page_number": p.page_number, "points": p.points}
+                for p in polygons
+            ]
 
             logger.debug(
                 "Chunk %d: section_type=%s, section_title=%s, "
-                "context_prefix=%s, bounding_polygons=%s",
-                "content=%s",
-                index,
+                "context_prefix=%s, bounding_polygons=%s, content=%s",
+                offset,
                 section_type,
                 section_title,
                 context_prefix,
                 bounding_polygons,
-                text[:50] + "..." if len(text) > 50 else text, 
+                text[:50] + "..." if len(text) > 50 else text,
             )
-    
 
             chunks.append(
                 Chunk(
                     content=text,
-                    chunk_index=index,
+                    chunk_index=offset,
                     document_id=self.document.id,
                     section_type=section_type,
                     section_title=section_title,

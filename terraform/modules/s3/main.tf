@@ -1,6 +1,7 @@
 module "bucket" {
-  source      = "./bucket"
-  name_prefix = "semantic-search-bucket"
+  source               = "./bucket"
+  name_prefix          = "semantic-search-bucket"
+  cors_allowed_origins = var.cors_allowed_origins
 }
 
 module "policy" {

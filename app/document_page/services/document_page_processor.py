@@ -77,15 +77,18 @@ class DocumentPageProcessor:
             s3_key = self.s3_file_loader.build_page_key(
                 self.document.id, page_data.page_number
             )
-            self._upload_page(s3_key, page_data.pdf_bytes)
-
             page = self._persist_page(s3_key)
             pages.append(page)
+
+            self._upload_page(s3_key, page_data.pdf_bytes)
 
             logger.info(
                 "Processed page %s of document %s",
                 page_data.page_number,
                 self.document.id,
             )
+
+        self.document.number_of_pages = len(pages)
+        self.document.save(update_fields=["number_of_pages"])
 
         return pages

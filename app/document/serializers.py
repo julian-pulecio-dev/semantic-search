@@ -12,4 +12,4 @@ class DocumentSerializer(serializers.ModelSerializer):
             "uploaded_at",
             "user",
         ]
-        read_only_fields = ["id", "s3_key", "uploaded_at", "user"]
+        read_only_fields = ["id", "s3_key", "status", "uploaded_at", "user"]
