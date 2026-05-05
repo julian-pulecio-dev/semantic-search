@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(xargs grep:*)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "Bash(grep -E \"^d|\\\\.py$|\\\\.json$\")"
     ]
   }
 }

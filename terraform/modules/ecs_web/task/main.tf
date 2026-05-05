@@ -56,7 +56,8 @@ resource "aws_iam_policy" "ecs_bedrock_nova" {
         ]
         Resource = [
           "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-*",
-          "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0"
+          "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0",
+          "arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0"  # <-- add this
         ]
       }
     ]
@@ -71,6 +72,26 @@ resource "aws_iam_role_policy_attachment" "ecs_s3_write_attach" {
 resource "aws_iam_role_policy_attachment" "ecs_bedrock_nova_attach" {
   role       = aws_iam_role.ecs_task.name
   policy_arn = aws_iam_policy.ecs_bedrock_nova.arn
+}
+
+resource "aws_iam_policy" "ecs_bedrock_rerank" {
+  name = "${var.name}-bedrock-rerank"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock:Rerank"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_bedrock_rerank_attach" {
+  role       = aws_iam_role.ecs_task.name
+  policy_arn = aws_iam_policy.ecs_bedrock_rerank.arn
 }
 
 resource "aws_iam_policy" "ecs_exec" {

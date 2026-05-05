@@ -17,16 +17,25 @@ from drf_spectacular.utils import extend_schema
 from document_chunk.models import DocumentChunk
 from document_chunk.serializers import (
     DocumentChunkSerializer,
+    DocumentChunkListSerializer,
     ChunkRefreshSerializer,
+    ChunkReboundSerializer,
     SemanticSearchSerializer,
+    SemanticSearchResultSerializer,
 )
 from document_chunk.services.embeddings_processor import EmbeddingsProcessor
 from document_chunk.services.chunk_refresh_service import ChunkRefreshService
+from document_chunk.services.reranker_service import RerankerService
+from document_page.models import DocumentPage
 
 
 class DocumentChunkListCreateView(generics.ListCreateAPIView):
-    serializer_class = DocumentChunkSerializer
     permission_classes = []
+
+    def get_serializer_class(self):
+        if self.request.method == "GET":
+            return DocumentChunkListSerializer
+        return DocumentChunkSerializer
 
     def get_queryset(self):
         return (
@@ -75,9 +84,63 @@ class ChunkRefreshView(APIView):
         )
 
 
+class ChunkReboundView(APIView):
+    """
+    Re-extracts text and reprocesses a chunk using new bounding polygons,
+    start page, and end page.
+
+    Updates: content, section metadata, all embeddings, bounding_polygons,
+    start_page, end_page.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        request=ChunkReboundSerializer,
+        responses={200: DocumentChunkSerializer},
+    )
+    def patch(self, request, doc_id, pk):
+        chunk = generics.get_object_or_404(
+            DocumentChunk.objects.select_related(
+                "start_page__document", "end_page"
+            ),
+            id=pk,
+            document_id=doc_id,
+        )
+
+        serializer = ChunkReboundSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        start_page = generics.get_object_or_404(
+            DocumentPage,
+            id=serializer.validated_data["start_page"],
+            document_id=doc_id,
+        )
+        end_page = generics.get_object_or_404(
+            DocumentPage,
+            id=serializer.validated_data["end_page"],
+            document_id=doc_id,
+        )
+
+        chunk = ChunkRefreshService().refresh(
+            chunk=chunk,
+            bounding_polygons=serializer.validated_data["bounding_polygons"],
+            start_page=start_page,
+            end_page=end_page,
+        )
+
+        return Response(
+            DocumentChunkSerializer(chunk).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+_RERANK_CANDIDATE_MULTIPLIER = 3
+
+
 class SemanticSearchView(APIView):
     """
-    Hybrid semantic search over document chunks.
+    Hybrid semantic search over document chunks with optional reranking.
 
     Strategy
     --------
@@ -90,14 +153,17 @@ class SemanticSearchView(APIView):
     3. Apply an optional keyword boost: chunks whose content contains any
        significant query term get a −0.05 bonus on the combined score
        (lower distance = better match).
-    4. Return the top-k chunks ordered by the combined score.
+    4. If rerank=True, retrieve k * 3 candidates and run them through
+       Amazon Bedrock's reranking model before returning the top k.
+       The response includes both similarity (cosine-based) and rerank_score.
+    5. Return the top-k chunks ordered by the combined score (or rerank score).
     """
 
     permission_classes = []
 
     @extend_schema(
         request=SemanticSearchSerializer,
-        responses={200: DocumentChunkSerializer(many=True)},
+        responses={200: SemanticSearchResultSerializer(many=True)},
     )
     def post(self, request):
         serializer = SemanticSearchSerializer(data=request.data)
@@ -105,10 +171,12 @@ class SemanticSearchView(APIView):
 
         query: str = serializer.validated_data["query"]
         k: int = serializer.validated_data["k"]
+        rerank: bool = serializer.validated_data["rerank"]
 
         query_embedding = EmbeddingsProcessor().get_embedding(query)
-
         keyword_boost = self._keyword_boost(query)
+
+        candidate_k = k * _RERANK_CANDIDATE_MULTIPLIER if rerank else k
 
         chunks = (
             DocumentChunk.objects.filter(embedding__isnull=False)
@@ -132,11 +200,14 @@ class SemanticSearchView(APIView):
                     output_field=FloatField(),
                 )
             )
-            .order_by("score")[:k]
+            .order_by("score")[:candidate_k]
         )
 
+        if rerank:
+            chunks = RerankerService().rerank(query, list(chunks), top_n=k)
+
         return Response(
-            DocumentChunkSerializer(chunks, many=True).data,
+            SemanticSearchResultSerializer(chunks, many=True).data,
             status=status.HTTP_200_OK,
         )
 

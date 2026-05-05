@@ -37,6 +37,8 @@ class ChunkRefreshService:
         "embedding_title",
         "embedding_doc",
         "bounding_polygons",
+        "start_page",
+        "end_page",
     ]
 
     def __init__(
@@ -48,7 +50,11 @@ class ChunkRefreshService:
         self.embedding_processor = embedding_processor or EmbeddingsProcessor()
 
     def refresh(
-        self, chunk: DocumentChunk, bounding_polygons: list
+        self,
+        chunk: DocumentChunk,
+        bounding_polygons: list,
+        start_page=None,
+        end_page=None,
     ) -> DocumentChunk:
         """
         Refreshes the chunk content, context metadata, and all embeddings.
@@ -56,6 +62,8 @@ class ChunkRefreshService:
         Args:
             chunk: The DocumentChunk instance to refresh.
             bounding_polygons: List of dicts with 'page_number' and 'points' keys.
+            start_page: Optional DocumentPage to update chunk.start_page.
+            end_page: Optional DocumentPage to update chunk.end_page.
         Returns:
             The updated DocumentChunk instance.
         Raises:
@@ -67,7 +75,7 @@ class ChunkRefreshService:
 
         pages = self.pdf_extractor.extract(
             os.environ["S3_BUCKET_NAME"],
-            chunk.page.document.s3_key,
+            chunk.start_page.document.s3_key,
         )
 
         new_text = self._extract_text_from_polygons(bounding_polygons, pages)
@@ -105,6 +113,8 @@ class ChunkRefreshService:
             embedding_title=embeddings[1],
             embedding_doc=embeddings[2],
             bounding_polygons=bounding_polygons,
+            start_page=start_page if start_page is not None else chunk.start_page,
+            end_page=end_page if end_page is not None else chunk.end_page,
         )
 
         return chunk
@@ -112,7 +122,7 @@ class ChunkRefreshService:
     @staticmethod
     def _doc_context_text(chunk: DocumentChunk) -> str:
         filename = (
-            os.path.basename(chunk.page.document.s3_key or "")
+            os.path.basename(chunk.start_page.document.s3_key or "")
             .replace("_", " ")
             .replace("-", " ")
         )
@@ -168,6 +178,8 @@ class ChunkRefreshService:
         embedding_title: list,
         embedding_doc: list,
         bounding_polygons: list,
+        start_page,
+        end_page,
     ) -> None:
         chunk.content = content
         chunk.section_type = section_type
@@ -177,5 +189,7 @@ class ChunkRefreshService:
         chunk.embedding_title = embedding_title
         chunk.embedding_doc = embedding_doc
         chunk.bounding_polygons = bounding_polygons
+        chunk.start_page = start_page
+        chunk.end_page = end_page
         chunk.save(update_fields=self._REFRESH_FIELDS)
         logger.info("Chunk %s refreshed and saved", chunk.id)

@@ -3,6 +3,7 @@ from .views import (
     DocumentChunkListCreateView,
     DocumentChunkRetrieveUpdateDestroyView,
     ChunkRefreshView,
+    ChunkReboundView,
 )
 
 urlpatterns = [
@@ -14,5 +15,8 @@ urlpatterns = [
     ),
     path(
         "<uuid:pk>/refresh/", ChunkRefreshView.as_view(), name="chunk-refresh"
+    ),
+    path(
+        "<uuid:pk>/rebound/", ChunkReboundView.as_view(), name="chunk-rebound"
     ),
 ]
