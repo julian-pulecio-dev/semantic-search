@@ -47,12 +47,15 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="documenttype",
-            index=models.Index(fields=["name"], name="document_ty_name_8ea1f1_idx"),
+            index=models.Index(
+                fields=["name"], name="document_ty_name_8ea1f1_idx"
+            ),
         ),
         migrations.AddIndex(
             model_name="documenttype",
             index=models.Index(
-                fields=["authority_score"], name="document_ty_authori_527924_idx"
+                fields=["authority_score"],
+                name="document_ty_authori_527924_idx",
             ),
         ),
     ]

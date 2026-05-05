@@ -15,6 +15,7 @@ class WorkerRunner:
         - signal handling for graceful shutdown
         - worker initialization and execution
     """
+
     def __init__(self):
         self.logger = self._setup_logging()
         self.logger.info("Initializing logging...")
@@ -95,12 +96,10 @@ class WorkerRunner:
 
         visibility_timeout = self._get_int_env("VISIBILITY_TIMEOUT", 300)
 
-        self.logger.info(
-            f"Starting worker | \
+        self.logger.info(f"Starting worker | \
               queue={queue_url} | \
               visibility_timeout={visibility_timeout} | \
-              processor={processor_cls.__name__}"
-        )
+              processor={processor_cls.__name__}")
 
         worker = WorkerHandler(
             queue_url=queue_url,

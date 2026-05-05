@@ -3,7 +3,9 @@
     "allow": [
       "Bash(xargs grep:*)",
       "Bash(xargs cat:*)",
-      "Bash(grep -E \"^d|\\\\.py$|\\\\.json$\")"
+      "Bash(grep -E \"^d|\\\\.py$|\\\\.json$\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\julia\\\\Documents\\\\projects\\\\semantic-search\" -Recurse -Depth 2)",
+      "Bash(Select-Object -First 50)"
     ]
   }
 }

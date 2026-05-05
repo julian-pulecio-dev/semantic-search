@@ -94,7 +94,9 @@ class ChunkEmbeddingService:
         """Creates and saves a DocumentChunk with polygon data but no embeddings."""
         try:
             return DocumentChunk.objects.create(
-                page=page,
+                document=page.document,
+                start_page=page,
+                end_page=page,
                 content=chunk_data["content"],
                 chunk_index=chunk_data["chunk_index"],
                 section_type=chunk_data.get("section_type"),
@@ -180,14 +182,11 @@ class ChunkEmbeddingService:
             if document.number_of_pages is None:
                 return
 
-            if (
-                document.number_of_pages_processed
-                < document.number_of_pages
-            ):
+            if document.number_of_pages_processed < document.number_of_pages:
                 return
 
             has_null = DocumentChunk.objects.filter(
-                page__document=document, embedding__isnull=True
+                start_page__document=document, embedding__isnull=True
             ).exists()
 
             new_status = (

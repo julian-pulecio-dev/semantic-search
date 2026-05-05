@@ -33,10 +33,15 @@ class Migration(migrations.Migration):
                     models.PositiveIntegerField(
                         blank=True,
                         null=True,
-                        validators=[django.core.validators.MinValueValidator(1)],
+                        validators=[
+                            django.core.validators.MinValueValidator(1)
+                        ],
                     ),
                 ),
-                ("number_of_chunks_processed", models.PositiveIntegerField(default=0)),
+                (
+                    "number_of_chunks_processed",
+                    models.PositiveIntegerField(default=0),
+                ),
                 (
                     "document",
                     models.ForeignKey(
@@ -53,7 +58,8 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="documentpage",
             constraint=models.UniqueConstraint(
-                fields=("document", "created_at"), name="unique_page_per_document"
+                fields=("document", "created_at"),
+                name="unique_page_per_document",
             ),
         ),
     ]

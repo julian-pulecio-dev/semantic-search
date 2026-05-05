@@ -28,6 +28,7 @@ class DocumentPageRetrieveUpdateDestroyView(
         return DocumentPage.objects.filter(document_id=self.kwargs["doc_id"])
 
     def perform_destroy(self, instance):
-        s3_loader = S3FileLoaderService(bucket_name=BUCKET_NAME)
-        s3_loader.delete_file(key=instance.s3_key)
+        if instance.s3_key:
+            s3_loader = S3FileLoaderService(bucket_name=BUCKET_NAME)
+            s3_loader.delete_file(key=instance.s3_key)
         instance.delete()

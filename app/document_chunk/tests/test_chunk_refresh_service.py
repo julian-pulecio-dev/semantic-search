@@ -27,7 +27,9 @@ class TestChunkRefreshService(TestCase):
         )
         self.page = DocumentPage.objects.create(document=self.document)
         self.chunk = DocumentChunk.objects.create(
-            page=self.page,
+            document=self.document,
+            start_page=self.page,
+            end_page=self.page,
             content="Original content",
             embedding=[0.0] * 1024,
             chunk_index=0,

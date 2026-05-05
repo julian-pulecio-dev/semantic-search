@@ -6,7 +6,10 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("document_chunk", "0002_remove_documentchunk_unique_chunk_per_page_and_more"),
+        (
+            "document_chunk",
+            "0002_remove_documentchunk_unique_chunk_per_page_and_more",
+        ),
     ]
 
     operations = [

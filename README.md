@@ -10,13 +10,16 @@ Built to production standards: event-driven async processing on AWS, horizontal 
 
 ## Key Features
 
-- **Semantic retrieval** — pgvector HNSW cosine-distance index over 1024-dim embeddings
-- **Async ingestion pipeline** — S3 → EventBridge → SQS → ECS worker; API returns immediately
+- **Two-stage retrieval** — pgvector HNSW cosine search retrieves a candidate pool, then Cohere Rerank v3.5 (via Bedrock) reranks by relevance before returning results
+- **Three embeddings per chunk** — content embedding (`[section_type] section_title: content`), section-header embedding, and document-level embedding; stored as separate pgvector columns for multi-signal retrieval
+- **Article-aware chunking** — `ArticleSplitter` splits legal documents on `Artículo N.` boundaries; oversized articles fall back to `RecursiveCharacterTextSplitter` with tiktoken-based limits
+- **Automatic section context** — each chunk's section type (Audiencia, Sentencia, Contrato, Demanda, etc.) and title are inferred from its content and stored alongside the embedding
+- **Page-level async ingestion** — S3 → EventBridge → SQS → ECS worker processes each document page independently; API returns immediately
 - **Scalable workers** — thread pool with SQS heartbeat extension; graceful `SIGTERM` shutdown
 - **Horizontal autoscaling** — ECS web service scales on ALB request count; doc-chunking worker scales on SQS queue depth
 - **Production infrastructure** — VPC, RDS, ALB, Secrets Manager, CloudWatch, all in Terraform
 - **JWT authentication** — write endpoints require a valid access token; chunk retrieval and semantic search are publicly accessible
-- **Bounding polygons** — each chunk carries convex-hull coordinates per page; overlapping chunks share the same page region so polygons stack visually with semi-transparent rendering
+- **Bounding polygons** — each chunk carries word-level polygon coordinates per page, resolved from pdfplumber's word bounding boxes using a sequential cursor across chunks
 - **CI/CD pipeline** — GitHub Actions builds, tests, migrates, and deploys on every push to `main`
 
 ---
@@ -52,6 +55,7 @@ Built to production standards: event-driven async processing on AWS, horizontal 
 | Auth | JWT (djangorestframework-simplejwt) |
 | Database | PostgreSQL + pgvector (1024-dim embeddings, HNSW index) |
 | Embeddings | Amazon Titan Embed Text v2 (via Bedrock) |
+| Reranking | Cohere Rerank v3.5 (via Bedrock) |
 | LLM | Amazon Nova (via Bedrock) |
 | Document parsing | pdfplumber |
 | Background jobs | SQS + custom worker (thread pool) |
@@ -63,20 +67,26 @@ Built to production standards: event-driven async processing on AWS, horizontal 
 ## Document Ingestion Pipeline
 
 1. Client uploads a document via `POST /api/document/`
-2. File is stored in S3
-3. S3 emits an event → EventBridge routes it to SQS
-4. The **doc-chunking** ECS worker picks up the SQS message
-5. Worker downloads the file, parses it with pdfplumber, and splits it into chunks
-6. Each chunk is embedded with Amazon Titan Embed Text v2 (1024 dimensions)
-7. Embeddings are stored in PostgreSQL via pgvector with an HNSW cosine-distance index
-8. Document status is updated to `PROCESSED`
+2. Document PDF is split into individual pages; each page is stored in S3 under `pages/{document_id}/pages/page_{N}.pdf`
+3. S3 emits one event per page → EventBridge routes each to SQS
+4. The **doc-chunking** ECS worker picks up each page message independently
+5. Worker parses the page PDF with pdfplumber, extracting text and word-level bounding boxes
+6. Text is split into article-aware chunks: `ArticleSplitter` divides on `Artículo N.` boundaries; articles exceeding the token limit are further subdivided by `RecursiveCharacterTextSplitter`
+7. For each chunk, section type (e.g. Sentencia, Audiencia, Contrato) and section title are inferred from the chunk text
+8. Bounding polygons are resolved per chunk from the word-level coordinates using a sequential cursor, ensuring correct polygon assignment across chunk boundaries
+9. Each chunk receives **three embeddings** via Amazon Titan Embed Text v2 (1024 dimensions):
+   - `embedding` — `[section_type] section_title: content`
+   - `embedding_title` — `[section_type] section_title`
+   - `embedding_doc` — `Documento legal: <filename>`
+10. Chunks and embeddings are stored in PostgreSQL via pgvector with an HNSW cosine-distance index
+11. Document status transitions to `PROCESSED` once all page embeddings are complete, or `INCOMPLETED` if any embedding is null
 
 ## Semantic Search Flow
 
 1. Client sends a query via `POST /api/chunk/search/` (no authentication required)
 2. Query text is embedded using Amazon Titan Embed Text v2
-3. pgvector executes a cosine-distance search over the HNSW index
-4. All chunks whose cosine similarity meets or exceeds `threshold` are returned, ranked by similarity, across all documents
+3. pgvector retrieves a candidate pool (3× the requested `top_n`) using cosine-distance search over the HNSW index; only chunks meeting the `threshold` are included
+4. Cohere Rerank v3.5 (via Bedrock) scores each `(query, chunk)` pair and returns the top `top_n` results in relevance order; falls back to pgvector order if the reranking API call fails
 
 ### Example
 
@@ -96,21 +106,25 @@ POST /api/chunk/search/
     "document": "b7e9f012-...",
     "chunk_index": 4,
     "content": "Either party may terminate this agreement upon 30 days written notice...",
+    "section_type": "Contrato",
+    "section_title": "Either party may terminate this agreement",
+    "context_prefix": "[Contrato] Either party may terminate this agreement",
     "bounding_polygons": [
       {
         "page_number": 1,
         "points": [[120, 340], [480, 340], [480, 390], [120, 390]]
       }
     ],
+    "rerank_score": 0.9821,
     "created_at": "2024-11-15T10:23:44Z"
   },
   ...
 ]
 ```
 
-`threshold` is a float between `0.0` and `1.0` (default `0.8`). A higher value returns only closer matches; `0.0` returns all chunks regardless of similarity.
+`threshold` is a float between `0.0` and `1.0` (default `0.8`). A higher value returns only closer matches; `0.0` returns all chunks regardless of similarity. The threshold is applied to the pgvector candidate pool before reranking — it does not filter the final reranked results.
 
-Cosine similarity is derived from pgvector's `CosineDistance` as `similarity = 1 − distance`. Only chunks with `distance ≤ 1 − threshold` are returned.
+Cosine similarity is derived from pgvector's `CosineDistance` as `similarity = 1 − distance`. Only chunks with `distance ≤ 1 − threshold` are included in the candidate pool passed to the reranker.
 
 ---
 

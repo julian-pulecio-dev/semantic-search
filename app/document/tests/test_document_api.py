@@ -26,25 +26,31 @@ class DocumentListCreateViewTestCase(APITestCase):
         )
         self.doc1 = Document.objects.create(
             status=Document.Status.PROCESSED,
-            user=self.admin_user,
+            user=self.regular_user,
             s3_key="key1",
         )
         self.doc2 = Document.objects.create(
             status=Document.Status.PENDING,
-            user=self.admin_user,
+            user=self.regular_user,
             s3_key="key2",
         )
 
-    def test_list_returns_all_documents(self):
+    def test_list_requires_authentication(self):
+        response = self.client.get(LIST_URL)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_list_returns_only_own_documents(self):
+        self.client.force_authenticate(user=self.regular_user)
         response = self.client.get(LIST_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 2)
 
-    def test_list_accessible_without_authentication(self):
-        response = self.client.get(LIST_URL)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_list_accessible_by_authenticated_user(self):
+    def test_list_does_not_return_other_users_documents(self):
+        Document.objects.create(
+            status=Document.Status.PROCESSED,
+            user=self.admin_user,
+            s3_key="admin_key",
+        )
         self.client.force_authenticate(user=self.regular_user)
         response = self.client.get(LIST_URL)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -81,7 +87,7 @@ class DocumentRetrieveUpdateDestroyViewTestCase(APITestCase):
         response = self.client.get(DETAIL_URL(uuid.uuid4()))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_update_document_status(self):
+    def test_status_is_read_only_on_put(self):
         self.client.force_authenticate(user=self.regular_user)
         response = self.client.put(
             DETAIL_URL(self.doc.id),
@@ -90,9 +96,9 @@ class DocumentRetrieveUpdateDestroyViewTestCase(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.doc.refresh_from_db()
-        self.assertEqual(self.doc.status, Document.Status.FAILED)
+        self.assertEqual(self.doc.status, Document.Status.PROCESSED)
 
-    def test_partial_update_document_status(self):
+    def test_status_is_read_only_on_patch(self):
         self.client.force_authenticate(user=self.regular_user)
         response = self.client.patch(
             DETAIL_URL(self.doc.id),
@@ -101,7 +107,7 @@ class DocumentRetrieveUpdateDestroyViewTestCase(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.doc.refresh_from_db()
-        self.assertEqual(self.doc.status, Document.Status.PROCESSING)
+        self.assertEqual(self.doc.status, Document.Status.PROCESSED)
 
     @patch("document.views.S3FileLoaderService.delete_file")
     def test_delete_requires_admin(self, mock_delete):

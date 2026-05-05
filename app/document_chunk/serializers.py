@@ -82,7 +82,10 @@ class SemanticSearchResultSerializer(DocumentChunkSerializer):
     rerank_score = serializers.SerializerMethodField()
 
     class Meta(DocumentChunkSerializer.Meta):
-        fields = DocumentChunkSerializer.Meta.fields + ["similarity", "rerank_score"]
+        fields = DocumentChunkSerializer.Meta.fields + [
+            "similarity",
+            "rerank_score",
+        ]
 
     def get_similarity(self, obj):
         score = getattr(obj, "score", None)

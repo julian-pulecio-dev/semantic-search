@@ -93,13 +93,15 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="documentchunk",
             index=models.Index(
-                fields=["start_page", "end_page"], name="document_ch_start_p_6d4e1f_idx"
+                fields=["start_page", "end_page"],
+                name="document_ch_start_p_6d4e1f_idx",
             ),
         ),
         migrations.AddConstraint(
             model_name="documentchunk",
             constraint=models.UniqueConstraint(
-                fields=("document", "chunk_index"), name="unique_chunk_per_document"
+                fields=("document", "chunk_index"),
+                name="unique_chunk_per_document",
             ),
         ),
     ]

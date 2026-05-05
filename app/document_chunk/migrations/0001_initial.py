@@ -60,7 +60,9 @@ class Migration(migrations.Migration):
                 (
                     "chunk_index",
                     models.PositiveIntegerField(
-                        validators=[django.core.validators.MinValueValidator(0)]
+                        validators=[
+                            django.core.validators.MinValueValidator(0)
+                        ]
                     ),
                 ),
                 ("bounding_polygons", models.JSONField(blank=True, null=True)),
@@ -81,7 +83,8 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="documentchunk",
             index=models.Index(
-                fields=["page", "chunk_index"], name="document_ch_page_id_ae85f0_idx"
+                fields=["page", "chunk_index"],
+                name="document_ch_page_id_ae85f0_idx",
             ),
         ),
         migrations.AddIndex(

@@ -52,9 +52,14 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "number_of_pages",
-                    models.PositiveIntegerField(blank=True, default=None, null=True),
+                    models.PositiveIntegerField(
+                        blank=True, default=None, null=True
+                    ),
                 ),
-                ("number_of_pages_processed", models.PositiveIntegerField(default=0)),
+                (
+                    "number_of_pages_processed",
+                    models.PositiveIntegerField(default=0),
+                ),
                 ("uploaded_at", models.DateTimeField(auto_now_add=True)),
                 (
                     "user",

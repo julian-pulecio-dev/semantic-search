@@ -6,7 +6,9 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from document_chunk.models import DocumentChunk
-from document_chunk.services.exceptions.reranker_exceptions import RerankerError
+from document_chunk.services.exceptions.reranker_exceptions import (
+    RerankerError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +93,9 @@ class RerankerService:
             logger.error("Bedrock reranking failed: %s", exc)
             raise RerankerError(f"Reranking API call failed: {exc}") from exc
 
-        logger.debug("Bedrock rerank raw response keys: %s", list(response.keys()))
+        logger.debug(
+            "Bedrock rerank raw response keys: %s", list(response.keys())
+        )
         logger.debug("Bedrock rerank raw response: %s", response)
 
         results = (

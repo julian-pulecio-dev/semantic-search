@@ -21,10 +21,14 @@ _BATCH_RESULT = BatchEmbeddingResult(
     throttle_count=0,
 )
 _POLYGONS = [{"page_number": 1, "points": [[0, 0], [1, 0], [1, 1], [0, 1]]}]
-_ABSENT = object()  # sentinel: key present but caller wants the default polygons
+_ABSENT = (
+    object()
+)  # sentinel: key present but caller wants the default polygons
 
 
-def _chunk_data(chunk_index=0, content="chunk text", bounding_polygons=_ABSENT):
+def _chunk_data(
+    chunk_index=0, content="chunk text", bounding_polygons=_ABSENT
+):
     return {
         "content": content,
         "chunk_index": chunk_index,
@@ -62,7 +66,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            page__document=self.document, chunk_index=0
+            start_page__document=self.document, chunk_index=0
         )
         self.assertEqual(chunk.content, "chunk text")
         self.assertEqual(chunk.section_type, "Legal")
@@ -73,7 +77,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            page__document=self.document, chunk_index=0
+            start_page__document=self.document, chunk_index=0
         )
         self.assertEqual(chunk.bounding_polygons, _POLYGONS)
 
@@ -84,7 +88,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            page__document=self.document, chunk_index=0
+            start_page__document=self.document, chunk_index=0
         )
         self.assertIsNone(chunk.bounding_polygons)
 
@@ -99,7 +103,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
 
         self.assertEqual(
             DocumentChunk.objects.filter(
-                page__document=self.document
+                start_page__document=self.document
             ).count(),
             2,
         )
@@ -114,7 +118,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            page__document=self.document, chunk_index=0
+            start_page__document=self.document, chunk_index=0
         )
         self.assertTrue(np.allclose(chunk.embedding, _EMBEDDING))
         self.assertTrue(np.allclose(chunk.embedding_title, _EMBEDDING))
@@ -128,7 +132,7 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk = DocumentChunk.objects.get(
-            page__document=self.document, chunk_index=0
+            start_page__document=self.document, chunk_index=0
         )
         self.assertIsNone(chunk.embedding)
         self.assertIsNone(chunk.embedding_title)
@@ -149,10 +153,10 @@ class TestChunkEmbeddingServiceProcessBatch(TestCase):
         )
 
         chunk0 = DocumentChunk.objects.get(
-            page__document=self.document, chunk_index=0
+            start_page__document=self.document, chunk_index=0
         )
         chunk1 = DocumentChunk.objects.get(
-            page__document=self.document, chunk_index=1
+            start_page__document=self.document, chunk_index=1
         )
         self.assertIsNone(chunk0.embedding)
         self.assertIsNotNone(chunk1.embedding)

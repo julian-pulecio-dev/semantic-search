@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 
 from dataclasses import dataclass, field
@@ -6,6 +7,11 @@ from typing import ClassVar, List, Optional, Tuple
 
 from django.db import transaction
 from django.db.models import F, Max
+
+from langchain_text_splitters import (
+    RecursiveCharacterTextSplitter,
+    TextSplitter,
+)
 
 from document.models import Document
 from document_page.models import DocumentPage
@@ -18,13 +24,15 @@ from document_chunk.services.exceptions.document_chunk_exceptions import (
     DocumentPersistenceError,
     handle_persistence_errors,
 )
-from document_chunk.services.exceptions.embedding_exceptions import EmbeddingError
+from document_chunk.services.exceptions.embedding_exceptions import (
+    EmbeddingError,
+)
 from document_chunk.services.pdf_text_extractor import PDFTextExtractor
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "ArticleSplitter",
     "PageChunkProcessor",
     "DocumentProcessingError",
     "DocumentInvalidStatusError",
@@ -92,6 +100,49 @@ def _doc_context_text(document: Document) -> str:
     return f"Documento legal: {name}" if name else "Documento legal"
 
 
+class ArticleSplitter(TextSplitter):
+    """
+    Splits text on 'Artículo N.' / 'Articulo N.' boundaries so that each
+    article becomes exactly one chunk, regardless of its length.
+
+    Any content that appears before the first article (preamble, title, etc.)
+    is returned as its own chunk so no text is lost.
+
+    If an individual article exceeds ``max_tokens`` words (a fast proxy for
+    token count), it is further subdivided by the fallback splitter to avoid
+    overflowing the embedding model's context window.
+    """
+
+    _PATTERN = re.compile(r"(?=Art[ií]culo\s+\d+\.)", re.IGNORECASE)
+    _MAX_TOKENS: int = 1000
+
+    def __init__(self, max_tokens: int = _MAX_TOKENS, **kwargs):
+        super().__init__(**kwargs)
+        self._max_tokens = max_tokens
+        self._fallback = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+            encoding_name="cl100k_base",
+            chunk_size=self._max_tokens,
+            chunk_overlap=0,
+            separators=["\n\n", "\n", ". ", " ", ""],
+        )
+
+    def split_text(self, text: str) -> List[str]:
+        parts = self._PATTERN.split(text)
+        chunks: List[str] = []
+
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            # Use word count as a fast approximation of token count.
+            if len(part.split()) > self._max_tokens:
+                chunks.extend(self._fallback.split_text(part))
+            else:
+                chunks.append(part)
+
+        return chunks
+
+
 @dataclass(frozen=True)
 class Chunk:
     """
@@ -142,7 +193,7 @@ class PageChunkProcessor:
     Responsibilities
     ----------------
     1. Extract text and word-level coordinates from the PDF stored in S3.
-    2. Split the full document text into context-aware chunks.
+    2. Split the full document text into article-aware chunks via ArticleSplitter.
     3. Resolve bounding polygons for each chunk using sequential cursor state.
     4. Persist chunks to the database.
     5. Attach three embeddings per chunk (chunk / title / doc) via Bedrock Titan.
@@ -160,7 +211,7 @@ class PageChunkProcessor:
     page: DocumentPage
     document: Document
     pdf_extractor: Optional[PDFTextExtractor] = field(default=None)
-    splitter: Optional[RecursiveCharacterTextSplitter] = field(default=None)
+    splitter: Optional[TextSplitter] = field(default=None)
     bounding_polygon_resolver: Optional[ChunkBoundingPolygon] = field(
         default=None
     )
@@ -172,14 +223,7 @@ class PageChunkProcessor:
             self.pdf_extractor = PDFTextExtractor()
 
         if self.splitter is None:
-            self.splitter = (
-                RecursiveCharacterTextSplitter.from_tiktoken_encoder(
-                    encoding_name="cl100k_base",
-                    chunk_size=500,
-                    chunk_overlap=50,
-                    separators=["\n\n", "\n", ". ", " ", ""],
-                )
-            )
+            self.splitter = ArticleSplitter()
 
         if self.bounding_polygon_resolver is None:
             self.bounding_polygon_resolver = ChunkBoundingPolygon()
@@ -350,7 +394,9 @@ class PageChunkProcessor:
                 if has_null
                 else Document.Status.PROCESSED
             )
-            Document.objects.filter(id=self.document.id).update(status=new_status)
+            Document.objects.filter(id=self.document.id).update(
+                status=new_status
+            )
 
             logger.info(
                 "Document %s finalised with status %s (%d/%d pages done)",

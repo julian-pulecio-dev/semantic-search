@@ -8,9 +8,6 @@ from document_page.models import DocumentPage
 from document_chunk.services.page_chunk_processor import (
     PageChunkProcessor,
 )
-from document.services.exceptions.document_exceptions import (
-    DocumentProcessingError,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +30,7 @@ class DocumentChunkingHandler(Handler):
         try:
             page_key = body["detail"]["object"]["key"]
         except KeyError as e:
-            raise ValueError(
-                f"Malformed message, missing field: {e}"
-            ) from e
+            raise ValueError(f"Malformed message, missing field: {e}") from e
 
         logger.info("Received message for page=%s", page_key)
         self._chunk_and_dispatch(page_key)
@@ -44,9 +39,7 @@ class DocumentChunkingHandler(Handler):
         try:
             page = DocumentPage.objects.get(s3_key=page_key)
         except DocumentPage.DoesNotExist:
-            raise ValueError(
-                f"Page with key {page_key} not found in database"
-            )
+            raise ValueError(f"Page with key {page_key} not found in database")
 
         processor = PageChunkProcessor(page=page, document=page.document)
 

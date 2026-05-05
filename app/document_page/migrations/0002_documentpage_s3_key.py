@@ -14,7 +14,11 @@ class Migration(migrations.Migration):
             model_name="documentpage",
             name="s3_key",
             field=models.CharField(
-                blank=True, editable=False, max_length=255, null=True, unique=True
+                blank=True,
+                editable=False,
+                max_length=255,
+                null=True,
+                unique=True,
             ),
         ),
     ]

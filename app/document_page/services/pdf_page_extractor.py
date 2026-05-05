@@ -19,6 +19,7 @@ class PageData:
 MAX_PAGES = 5000
 MAX_SIZE_BYTES = 200 * 1024 * 1024
 
+
 @dataclass
 class PDFPageExtractor:
     document: Document
@@ -32,7 +33,7 @@ class PDFPageExtractor:
             if total > MAX_SIZE_BYTES:
                 raise DocumentProcessingError(
                     f"PDF too large (limit: {MAX_SIZE_BYTES / 1024 / 1024:.0f} MB)",
-                    self.document
+                    self.document,
                 )
             chunks.append(chunk)
 
@@ -48,7 +49,8 @@ class PDFPageExtractor:
 
         if page_count > MAX_PAGES:
             raise DocumentProcessingError(
-                f"Too many pages: {page_count} (limit: {MAX_PAGES})", self.document
+                f"Too many pages: {page_count} (limit: {MAX_PAGES})",
+                self.document,
             )
 
         for i in range(page_count):
@@ -75,7 +77,7 @@ class PDFPageExtractor:
                 if doc.is_encrypted:
                     raise DocumentProcessingError(
                         "PDF is encrypted and cannot be processed",
-                        self.document
+                        self.document,
                     )
 
                 yield from self._split_document(doc)
@@ -89,4 +91,6 @@ class PDFPageExtractor:
 
         except Exception as e:
             logger.exception("Failed to split PDF")
-            raise DocumentProcessingError(f"Failed to split PDF: {e}", self.document) from e
+            raise DocumentProcessingError(
+                f"Failed to split PDF: {e}", self.document
+            ) from e

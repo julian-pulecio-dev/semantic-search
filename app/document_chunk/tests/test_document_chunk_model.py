@@ -22,36 +22,36 @@ class DocumentChunkModelTest(TestCase):
         self.page = DocumentPage.objects.create(document=self.document)
         self.embedding = [0.1] * 1024
 
-    def test_create_document_chunk(self):
-        chunk = DocumentChunk.objects.create(
-            page=self.page,
+    def _create_chunk(self, chunk_index=0, **kwargs):
+        defaults = dict(
+            document=self.document,
+            start_page=self.page,
+            end_page=self.page,
             content="Test content",
             embedding=self.embedding,
-            chunk_index=0,
+            chunk_index=chunk_index,
         )
+        defaults.update(kwargs)
+        return DocumentChunk.objects.create(**defaults)
+
+    def test_create_document_chunk(self):
+        chunk = self._create_chunk()
 
         self.assertIsInstance(chunk.id, uuid.UUID)
-        self.assertEqual(chunk.page, self.page)
+        self.assertEqual(chunk.start_page, self.page)
+        self.assertEqual(chunk.document, self.document)
 
-    def test_unique_constraint_per_page(self):
-        DocumentChunk.objects.create(
-            page=self.page,
-            content="Chunk",
-            embedding=self.embedding,
-            chunk_index=0,
-        )
+    def test_unique_constraint_per_document(self):
+        self._create_chunk(chunk_index=0)
 
         with self.assertRaises(IntegrityError):
-            DocumentChunk.objects.create(
-                page=self.page,
-                content="Duplicate",
-                embedding=self.embedding,
-                chunk_index=0,
-            )
+            self._create_chunk(chunk_index=0)
 
     def test_min_value_validator(self):
         chunk = DocumentChunk(
-            page=self.page,
+            document=self.document,
+            start_page=self.page,
+            end_page=self.page,
             content="Invalid",
             embedding=self.embedding,
             chunk_index=-1,
@@ -61,35 +61,20 @@ class DocumentChunkModelTest(TestCase):
             chunk.full_clean()
 
     def test_create_chunk_without_embedding(self):
-        chunk = DocumentChunk.objects.create(
-            page=self.page,
-            content="Chunk without embedding",
-            embedding=None,
-            chunk_index=0,
-        )
+        chunk = self._create_chunk(embedding=None)
 
         chunk.refresh_from_db()
         self.assertIsNone(chunk.embedding)
 
     def test_cascade_delete_from_page(self):
-        chunk = DocumentChunk.objects.create(
-            page=self.page,
-            content="Test",
-            embedding=self.embedding,
-            chunk_index=0,
-        )
+        chunk = self._create_chunk()
 
         self.page.delete()
 
         self.assertFalse(DocumentChunk.objects.filter(id=chunk.id).exists())
 
     def test_cascade_delete_from_document(self):
-        chunk = DocumentChunk.objects.create(
-            page=self.page,
-            content="Test",
-            embedding=self.embedding,
-            chunk_index=0,
-        )
+        chunk = self._create_chunk()
 
         self.document.delete()
 

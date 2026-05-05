@@ -113,7 +113,9 @@ class ChunkRefreshService:
             embedding_title=embeddings[1],
             embedding_doc=embeddings[2],
             bounding_polygons=bounding_polygons,
-            start_page=start_page if start_page is not None else chunk.start_page,
+            start_page=(
+                start_page if start_page is not None else chunk.start_page
+            ),
             end_page=end_page if end_page is not None else chunk.end_page,
         )
 

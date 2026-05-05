@@ -4,7 +4,6 @@ from core.exceptions.base_exception_handler import BaseErrorHandler
 from document.models import Document
 
 
-
 class DocumentProcessingError(Exception):
 
     def __init__(self, message: str, document: Document = None):
@@ -12,6 +11,7 @@ class DocumentProcessingError(Exception):
         if document is not None and document.status != Document.Status.FAILED:
             document.status = Document.Status.FAILED
             document.save(update_fields=["status"])
+
     """
     Base domain exception for the document chunk processing pipeline.
     Catch this to handle any processing failure regardless of cause.

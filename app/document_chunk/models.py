@@ -2,8 +2,8 @@ import uuid
 from django.db import models
 from document_page.models import DocumentPage
 from pgvector.django import VectorField, HnswIndex
-from pgvector.django import VectorField, HnswIndex
 from document.models import Document
+
 
 class DocumentChunk(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
@@ -58,7 +58,6 @@ class DocumentChunk(models.Model):
         indexes = [
             models.Index(fields=["document", "chunk_index"]),
             models.Index(fields=["start_page", "end_page"]),
-
             HnswIndex(
                 name="chunk_embedding_hnsw",
                 fields=["embedding"],

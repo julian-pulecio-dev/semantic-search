@@ -8,9 +8,6 @@ from document.models import Document
 from document_page.services.document_page_processor import (
     DocumentPageProcessor,
 )
-from document.services.exceptions.document_exceptions import (
-    DocumentProcessingError,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +43,7 @@ class DocumentPageSlicingHandler(Handler):
         try:
             document_key = body["detail"]["object"]["key"]
         except KeyError as e:
-            raise ValueError(
-                f"Malformed message, missing field: {e}"
-            ) from e
+            raise ValueError(f"Malformed message, missing field: {e}") from e
 
         logger.info("Received message for document=%s", document_key)
         self._chunk_and_dispatch(document_key)
